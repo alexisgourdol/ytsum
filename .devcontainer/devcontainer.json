@@ -1,5 +1,5 @@
 {
-    "name": "Claude Code Sandbox",
+    "name": "ytsum",
     "build": {
         "dockerfile": "Dockerfile",
         "args": {
@@ -18,18 +18,16 @@
             "extensions": [
                 "anthropic.claude-code",
                 "ms-python.python",
-                "ms-python.vscode-pylance",
                 "charliermarsh.ruff"
             ],
-            // uncomment lines below accordingly e.g. if you use a venv, or set up pytest ...
             "settings": {
-                // "python.defaultInterpreterPath": "/workspace/.venv/bin/python",
-                //         "python.testing.pytestEnabled": true,
-                // "python.testing.pytestArgs": [
-                //     "."
-                // ],
+                "python.defaultInterpreterPath": "/usr/bin/python3",
+                "python.testing.pytestEnabled": true,
+                "python.testing.pytestArgs": [
+                    "."
+                ],
                 "[python]": {
-                    "editor.defaultFormatter": "charliermarsh.ruff",
+                    "formatting.provider": "charliermarsh.ruff",
                     "editor.formatOnSave": true,
                     "editor.codeActionsOnSave": {
                         "source.fixAll": "explicit",

@@ -70,6 +70,8 @@ for domain in \
     "sentry.io" \
     "statsig.anthropic.com" \
     "statsig.com" \
+    "pypi.org" \
+    "files.pythonhosted.org" \
     "marketplace.visualstudio.com" \
     "vscode.blob.core.windows.net" \
     "update.code.visualstudio.com"; do
