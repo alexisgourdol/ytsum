@@ -26,48 +26,73 @@ This is another attempt, this time using
 ## Prerequisites
 
 - Python 3.11+
-- UV package manager
+- [UV package manager](https://docs.astral.sh/uv/getting-started/installation/) - Install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - Claude Pro or Max plan (for future summarization features)
 
 
 ## Installation
 
-### Using UV (recommended)
+### Quick Install (Recommended)
+
+Install the CLI globally to use `youtube-summarizer` from anywhere:
 
 ```bash
 # Clone the repository
-cd /workspace
+git clone https://github.com/alexisgourdol/ytsum.git
+cd ytsum
 
-# Install dependencies
-uv sync
+# Install globally with UV
+uv tool install .
+```
 
-# Install with dev dependencies (for testing)
+After installation, the `youtube-summarizer` command will be available system-wide.
+
+### Development Install
+
+For contributors who want to modify the code:
+
+```bash
+# Clone the repository
+git clone https://github.com/alexisgourdol/ytsum.git
+cd ytsum
+
+# Install dependencies (creates local .venv)
 uv sync --extra dev
 ```
 
-### Manual installation
+### Verify Installation
 
 ```bash
-pip install youtube-transcript-api
+# Check that it's installed
+youtube-summarizer --help
 ```
 
 
 ## Usage
 
-### CLI Usage
+### CLI Usage (After Global Install)
 
 ```bash
-# Using UV
-uv run youtube-summarizer "https://www.youtube.com/watch?v=VIDEO_ID"
+# Download transcript from URL
+youtube-summarizer "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # Download with timestamps
-uv run youtube-summarizer "VIDEO_ID" -t
+youtube-summarizer "VIDEO_ID" -t
 
 # Save to file
-uv run youtube-summarizer "VIDEO_ID" -o transcript.txt
+youtube-summarizer "VIDEO_ID" -o transcript.txt
 
 # Specify language preferences
-uv run youtube-summarizer "VIDEO_ID" -l en es fr
+youtube-summarizer "VIDEO_ID" -l en es fr
+```
+
+### CLI Usage (Development Mode)
+
+If you installed with `uv sync` for development:
+
+```bash
+# Run from the project directory
+uv run youtube-summarizer "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
 ### Library Usage
