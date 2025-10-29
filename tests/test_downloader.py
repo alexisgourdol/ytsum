@@ -137,7 +137,7 @@ class TestDownloadTranscript:
     def test_download_transcript_success(self, mocker):
         """Test successful transcript download"""
         # Mock the YouTubeTranscriptApi
-        mock_api = mocker.patch('youtube_summarizer.downloader.YouTubeTranscriptApi')
+        mock_api = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
         mock_api.get_transcript.return_value = [
             {'start': 0.0, 'text': 'Hello'},
             {'start': 1.0, 'text': 'World'},
@@ -150,7 +150,7 @@ class TestDownloadTranscript:
     def test_download_transcript_with_languages(self, mocker):
         """Test transcript download with language preference"""
         # Mock the YouTubeTranscriptApi
-        mock_api = mocker.patch('youtube_summarizer.downloader.YouTubeTranscriptApi')
+        mock_api = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
 
         # Create mock transcript list and transcript
         mock_transcript_list = mocker.MagicMock()
@@ -169,7 +169,7 @@ class TestDownloadTranscript:
 
     def test_download_transcript_fallback(self, mocker):
         """Test transcript download with language fallback"""
-        mock_api = mocker.patch('youtube_summarizer.downloader.YouTubeTranscriptApi')
+        mock_api = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
 
         # Create mock transcript list
         mock_transcript_list = mocker.MagicMock()
