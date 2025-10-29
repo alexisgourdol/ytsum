@@ -56,9 +56,9 @@ def download_transcript(video_id: str, languages: list = None) -> str:
         sys.exit(1)
 
     try:
-        if languages:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
 
+        if languages:
             # Try to find transcript in specified languages
             transcript = None
             for lang in languages:
@@ -70,11 +70,22 @@ def download_transcript(video_id: str, languages: list = None) -> str:
 
             if not transcript:
                 # Fall back to any available transcript
-                transcript = transcript_list.find_generated_transcript(['en'])
+                try:
+                    transcript = transcript_list.find_generated_transcript(['en'])
+                except:
+                    # If no English transcript, get the first available one
+                    for t in transcript_list:
+                        transcript = t
+                        break
         else:
-            # Get transcript in any available language
-            transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
-            return format_transcript(transcript_data)
+            # Get the first available transcript (usually auto-generated English)
+            try:
+                transcript = transcript_list.find_generated_transcript(['en'])
+            except:
+                # If no auto-generated English, get the first available transcript
+                for t in transcript_list:
+                    transcript = t
+                    break
 
         # Fetch and format the transcript
         transcript_data = transcript.fetch()

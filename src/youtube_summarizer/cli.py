@@ -62,8 +62,9 @@ Examples:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
 
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+
         if args.languages:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
             transcript = None
 
             for lang in args.languages:
@@ -77,11 +78,24 @@ Examples:
             if not transcript:
                 print(f"No transcript found in languages: {args.languages}")
                 print("Trying to get any available transcript...")
-                transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
-            else:
-                transcript_data = transcript.fetch()
+                try:
+                    transcript = transcript_list.find_generated_transcript(['en'])
+                except:
+                    # If no English transcript, get the first available one
+                    for t in transcript_list:
+                        transcript = t
+                        break
         else:
-            transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
+            # Get the first available transcript (usually auto-generated English)
+            try:
+                transcript = transcript_list.find_generated_transcript(['en'])
+            except:
+                # If no auto-generated English, get the first available transcript
+                for t in transcript_list:
+                    transcript = t
+                    break
+
+        transcript_data = transcript.fetch()
 
         # Format transcript
         formatted_transcript = format_transcript(transcript_data, args.timestamps)
