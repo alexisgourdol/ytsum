@@ -136,47 +136,78 @@ class TestDownloadTranscript:
 
     def test_download_transcript_success(self, mocker):
         """Test successful transcript download"""
-        # Mock the YouTubeTranscriptApi
-        mock_api = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
-        mock_api.get_transcript.return_value = [
+        # Mock the YouTubeTranscriptApi class
+        mock_api_class = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
+
+        # Create mock instance, transcript list, and transcript
+        mock_api_instance = mocker.MagicMock()
+        mock_transcript_list = mocker.MagicMock()
+        mock_transcript = mocker.MagicMock()
+
+        # Set up the mock chain
+        mock_api_class.return_value = mock_api_instance
+        mock_api_instance.list.return_value = mock_transcript_list
+
+        # Mock FetchedTranscript with to_raw_data() method
+        mock_fetched = mocker.MagicMock()
+        mock_fetched.to_raw_data.return_value = [
             {'start': 0.0, 'text': 'Hello'},
             {'start': 1.0, 'text': 'World'},
         ]
+        mock_transcript.fetch.return_value = mock_fetched
+        mock_transcript_list.find_generated_transcript.return_value = mock_transcript
 
         result = download_transcript('dQw4w9WgXcQ')
         assert result == "Hello\nWorld"
-        mock_api.get_transcript.assert_called_once_with('dQw4w9WgXcQ')
+        mock_api_instance.list.assert_called_once_with('dQw4w9WgXcQ')
 
     def test_download_transcript_with_languages(self, mocker):
         """Test transcript download with language preference"""
-        # Mock the YouTubeTranscriptApi
-        mock_api = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
+        # Mock the YouTubeTranscriptApi class
+        mock_api_class = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
 
-        # Create mock transcript list and transcript
+        # Create mock instance, transcript list, and transcript
+        mock_api_instance = mocker.MagicMock()
         mock_transcript_list = mocker.MagicMock()
         mock_transcript = mocker.MagicMock()
-        mock_transcript.fetch.return_value = [
+
+        # Set up the mock chain
+        mock_api_class.return_value = mock_api_instance
+        mock_api_instance.list.return_value = mock_transcript_list
+
+        # Mock FetchedTranscript with to_raw_data() method
+        mock_fetched = mocker.MagicMock()
+        mock_fetched.to_raw_data.return_value = [
             {'start': 0.0, 'text': 'Hola'},
             {'start': 1.0, 'text': 'Mundo'},
         ]
+        mock_transcript.fetch.return_value = mock_fetched
         mock_transcript_list.find_transcript.return_value = mock_transcript
-
-        mock_api.list_transcripts.return_value = mock_transcript_list
 
         result = download_transcript('dQw4w9WgXcQ', languages=['es'])
         assert result == "Hola\nMundo"
-        mock_api.list_transcripts.assert_called_once_with('dQw4w9WgXcQ')
+        mock_api_instance.list.assert_called_once_with('dQw4w9WgXcQ')
 
     def test_download_transcript_fallback(self, mocker):
         """Test transcript download with language fallback"""
-        mock_api = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
+        # Mock the YouTubeTranscriptApi class
+        mock_api_class = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
 
-        # Create mock transcript list
+        # Create mock instance, transcript list, and transcript
+        mock_api_instance = mocker.MagicMock()
         mock_transcript_list = mocker.MagicMock()
         mock_transcript = mocker.MagicMock()
-        mock_transcript.fetch.return_value = [
+
+        # Set up the mock chain
+        mock_api_class.return_value = mock_api_instance
+        mock_api_instance.list.return_value = mock_transcript_list
+
+        # Mock FetchedTranscript with to_raw_data() method
+        mock_fetched = mocker.MagicMock()
+        mock_fetched.to_raw_data.return_value = [
             {'start': 0.0, 'text': 'Hello'},
         ]
+        mock_transcript.fetch.return_value = mock_fetched
 
         # First language fails, second succeeds
         def find_transcript_side_effect(lang_list):
@@ -185,7 +216,25 @@ class TestDownloadTranscript:
             return mock_transcript
 
         mock_transcript_list.find_transcript.side_effect = find_transcript_side_effect
-        mock_api.list_transcripts.return_value = mock_transcript_list
 
         result = download_transcript('dQw4w9WgXcQ', languages=['fr', 'en'])
         assert "Hello" in result
+
+
+class TestDownloadTranscriptIntegration:
+    """Integration tests with real YouTube API (run manually)"""
+
+    @pytest.mark.integration
+    def test_download_real_video(self):
+        """Test downloading transcript from a real YouTube video"""
+        # Use a video with verified captions
+        video_id = "rfDvkSkelhg"
+
+        result = download_transcript(video_id)
+
+        # Basic assertions
+        assert result is not None
+        assert len(result) > 0
+        assert isinstance(result, str)
+        print(f"\nDownloaded transcript length: {len(result)} characters")
+        print(f"First 200 characters: {result[:200]}")
