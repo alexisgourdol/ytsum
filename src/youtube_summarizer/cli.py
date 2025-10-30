@@ -62,7 +62,9 @@ Examples:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
 
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # Create an instance of the API
+        api = YouTubeTranscriptApi()
+        transcript_list = api.list(video_id)
 
         if args.languages:
             transcript = None
@@ -98,7 +100,8 @@ Examples:
         transcript_data = transcript.fetch()
 
         # Format transcript
-        formatted_transcript = format_transcript(transcript_data, args.timestamps)
+        # Convert to raw dict format for compatibility
+        formatted_transcript = format_transcript(transcript_data.to_raw_data(), args.timestamps)
 
         # Output transcript
         if args.output:

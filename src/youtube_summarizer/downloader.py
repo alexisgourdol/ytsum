@@ -56,7 +56,9 @@ def download_transcript(video_id: str, languages: list = None) -> str:
         sys.exit(1)
 
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        # Create an instance of the API
+        api = YouTubeTranscriptApi()
+        transcript_list = api.list(video_id)
 
         if languages:
             # Try to find transcript in specified languages
@@ -89,7 +91,8 @@ def download_transcript(video_id: str, languages: list = None) -> str:
 
         # Fetch and format the transcript
         transcript_data = transcript.fetch()
-        return format_transcript(transcript_data)
+        # Convert to raw dict format for compatibility
+        return format_transcript(transcript_data.to_raw_data())
 
     except Exception as e:
         print(f"Error downloading transcript: {e}")
