@@ -8,12 +8,14 @@ from youtube_summarizer.downloader import (
     format_transcript,
     format_timestamp,
 )
+from youtube_summarizer.summarizer import summarize
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "extract_video_id",
     "download_transcript",
     "format_transcript",
     "format_timestamp",
+    "summarize",
 ]
