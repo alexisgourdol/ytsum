@@ -21,6 +21,7 @@ This is another attempt, this time using
 - Optional timestamp inclusion
 - Multi-language support with fallback
 - AI summarization via any Pydantic AI supported provider (opt-in)
+- Save summaries as Obsidian-ready markdown notes (opt-in)
 - CLI and library usage
 
 
@@ -82,20 +83,26 @@ youtube-summarizer --help
 ```
 
 
-## API Key Setup
+## Environment Setup
 
-Summarization requires an API key for your chosen provider. The key is read from an environment variable — nothing is stored in the code.
+All configuration is done via environment variables — nothing personal is stored in the code. Add the relevant lines to your `~/.zshrc` or `~/.bashrc` and reload with `source ~/.zshrc`.
+
+### API Keys (required for summarization)
 
 ```bash
-# Add to your ~/.zshrc or ~/.bashrc
 export ANTHROPIC_API_KEY=$(awk 'NR==1' ~/.claude/api_key)   # Claude
 export OPENAI_API_KEY=$(awk 'NR==1' ~/.openai/api_key)       # OpenAI
-
-# Reload your shell config
-source ~/.zshrc
 ```
 
 The `awk 'NR==1'` pattern reads only the first line of the file, which is safe if the file ever has trailing newlines or comments.
+
+### Default save directory (optional)
+
+```bash
+export YTSUM_SAVE_DIR="/path/to/your/obsidian/vault"
+```
+
+When set, `--save` with no argument will use this directory. If unset and `--save` is passed without a path, the CLI will print an error asking you to either pass a path or set the variable.
 
 
 ## Usage
@@ -132,6 +139,15 @@ youtube-summarizer "VIDEO_URL" -s --model ollama:llama3
 
 # Custom system prompt
 youtube-summarizer "VIDEO_URL" -s --prompt "Summarize in Spanish, 3 bullet points max"
+
+# Save summary as a markdown note to a specific directory
+youtube-summarizer "VIDEO_URL" --save "/path/to/vault" --topic LLM --title "My Note"
+
+# Save using YTSUM_SAVE_DIR (must be set in your environment)
+youtube-summarizer "VIDEO_URL" --save --topic LLM --title "My Note"
+
+# Summarize to stdout AND save
+youtube-summarizer "VIDEO_URL" --summarize --save "/path/to/vault" --topic LLM --title "My Note"
 ```
 
 ### CLI Usage (Development Mode)
@@ -201,11 +217,13 @@ ytsum/
 │       ├── __init__.py      # Package exports
 │       ├── downloader.py    # Core transcript functions
 │       ├── summarizer.py    # AI summarization via Pydantic AI
+│       ├── exporter.py      # Markdown note generation and file export
 │       └── cli.py           # CLI entry point
 └── tests/
     ├── __init__.py
     ├── test_downloader.py   # Tests for downloader module
-    └── test_summarizer.py   # Tests for summarizer module
+    ├── test_summarizer.py   # Tests for summarizer module
+    └── test_exporter.py     # Tests for exporter module
 ```
 
 

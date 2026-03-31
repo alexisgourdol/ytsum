@@ -203,6 +203,9 @@ def _get_summary(transcript_text: str, args: argparse.Namespace) -> str:
 def _save_note(summary: str, video_id: str, args: argparse.Namespace) -> None:
     from youtube_summarizer.exporter import build_filename, build_markdown, write_markdown
 
+    if not args.save:
+        print("Error: no save directory specified. Pass a path to --save or set the YTSUM_SAVE_DIR environment variable.")
+        sys.exit(1)
     filename = build_filename(args.topic, args.title)
     content = build_markdown(args.title, video_id, args.topic, summary)
     try:

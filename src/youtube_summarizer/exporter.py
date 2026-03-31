@@ -1,10 +1,11 @@
 """Markdown note generation and file export."""
 
+import os
 import re
 from datetime import date
 from pathlib import Path
 
-DEFAULT_SAVE_DIR = ""
+DEFAULT_SAVE_DIR = os.environ.get("YTSUM_SAVE_DIR", "")
 
 
 def sanitize_filename(name: str) -> str:
