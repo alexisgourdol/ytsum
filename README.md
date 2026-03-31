@@ -45,7 +45,7 @@ cd ytsum
 # Install globally with UV (transcript only)
 uv tool install .
 
-# Install with Claude support (recommended)
+# Install with Claude support
 uv tool install '.[anthropic]'
 
 # Install with OpenAI support

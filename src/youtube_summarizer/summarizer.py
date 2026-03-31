@@ -3,8 +3,11 @@
 DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
 DEFAULT_SYSTEM_PROMPT = (
     "You are an expert at summarizing YouTube video transcripts. "
-    "Produce a clear, concise summary capturing the main topics, key points, "
-    "and conclusions. Use bullet points for key takeaways."
+    "Structure your response with exactly these two markdown sections:\n\n"
+    "## Summary\n"
+    "A clear, concise summary of the main topics and conclusions.\n\n"
+    "## Key Takeaways\n"
+    "3-5 bullet points of the most important points from the video."
 )
 
 

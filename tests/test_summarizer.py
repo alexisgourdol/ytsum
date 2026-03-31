@@ -97,33 +97,31 @@ class TestSummarizeMissingDependency:
 
 
 class TestCliSummarization:
-    """Tests for _run_summarization() in cli.py"""
+    """Tests for _get_summary() in cli.py"""
 
-    def test_run_summarization_prints_summary(self, mocker, capsys):
-        """_run_summarization() prints the summary to stdout"""
+    def test_get_summary_returns_summary_string(self, mocker):
+        """_get_summary() returns the string from summarize()"""
         mocker.patch(
             "youtube_summarizer.summarizer.summarize",
             return_value="This is the summary.",
         )
 
-        from youtube_summarizer.cli import _run_summarization
+        from youtube_summarizer.cli import _get_summary
         args = argparse.Namespace(model=None, prompt=None)
-        _run_summarization("fake transcript", args)
+        result = _get_summary("fake transcript", args)
 
-        captured = capsys.readouterr()
-        assert "SUMMARY" in captured.out
-        assert "This is the summary." in captured.out
+        assert result == "This is the summary."
 
-    def test_run_summarization_passes_model_override(self, mocker):
-        """_run_summarization() forwards --model to summarize()"""
+    def test_get_summary_passes_model_override(self, mocker):
+        """_get_summary() forwards --model to summarize()"""
         mock_summarize = mocker.patch(
             "youtube_summarizer.summarizer.summarize",
             return_value="summary",
         )
 
-        from youtube_summarizer.cli import _run_summarization
+        from youtube_summarizer.cli import _get_summary
         args = argparse.Namespace(model="openai:gpt-4o", prompt=None)
-        _run_summarization("transcript", args)
+        _get_summary("transcript", args)
 
         mock_summarize.assert_called_once_with(
             "transcript",
@@ -131,44 +129,44 @@ class TestCliSummarization:
             system_prompt=mocker.ANY,
         )
 
-    def test_run_summarization_passes_prompt_override(self, mocker):
-        """_run_summarization() forwards --prompt to summarize()"""
+    def test_get_summary_passes_prompt_override(self, mocker):
+        """_get_summary() forwards --prompt to summarize()"""
         mock_summarize = mocker.patch(
             "youtube_summarizer.summarizer.summarize",
             return_value="summary",
         )
 
-        from youtube_summarizer.cli import _run_summarization
+        from youtube_summarizer.cli import _get_summary
         args = argparse.Namespace(model=None, prompt="Be very brief.")
-        _run_summarization("transcript", args)
+        _get_summary("transcript", args)
 
         call_kwargs = mock_summarize.call_args[1]
         assert call_kwargs["system_prompt"] == "Be very brief."
 
-    def test_run_summarization_import_error_exits_1(self, mocker):
-        """_run_summarization() exits with code 1 on ImportError"""
+    def test_get_summary_import_error_exits_1(self, mocker):
+        """_get_summary() exits with code 1 on ImportError"""
         mocker.patch(
             "youtube_summarizer.summarizer.summarize",
             side_effect=ImportError("pydantic-ai is required"),
         )
 
-        from youtube_summarizer.cli import _run_summarization
+        from youtube_summarizer.cli import _get_summary
         args = argparse.Namespace(model=None, prompt=None)
         with pytest.raises(SystemExit) as exc:
-            _run_summarization("transcript", args)
+            _get_summary("transcript", args)
         assert exc.value.code == 1
 
-    def test_run_summarization_generic_error_exits_1(self, mocker):
-        """_run_summarization() exits with code 1 on unexpected errors"""
+    def test_get_summary_generic_error_exits_1(self, mocker):
+        """_get_summary() exits with code 1 on unexpected errors"""
         mocker.patch(
             "youtube_summarizer.summarizer.summarize",
             side_effect=Exception("API rate limit"),
         )
 
-        from youtube_summarizer.cli import _run_summarization
+        from youtube_summarizer.cli import _get_summary
         args = argparse.Namespace(model=None, prompt=None)
         with pytest.raises(SystemExit) as exc:
-            _run_summarization("transcript", args)
+            _get_summary("transcript", args)
         assert exc.value.code == 1
 
 
@@ -176,8 +174,8 @@ class TestCliNoSummarize:
     """Verify summarize() is never called when --summarize flag is absent"""
 
     def test_summarize_not_called_without_flag(self, mocker):
-        """Without --summarize, _run_summarization is never invoked"""
-        mock_run_summarization = mocker.patch("youtube_summarizer.cli._run_summarization")
+        """Without --summarize or --save, _get_summary is never invoked"""
+        mock_run_summarization = mocker.patch("youtube_summarizer.cli._get_summary")
 
         # Mock the transcript download pipeline
         mock_api_class = mocker.patch("youtube_transcript_api.YouTubeTranscriptApi")

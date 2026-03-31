@@ -10,6 +10,7 @@ from youtube_summarizer.downloader import (
     extract_video_id,
     format_transcript,
 )
+from youtube_summarizer.exporter import DEFAULT_SAVE_DIR
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,17 +23,17 @@ Examples:
   %(prog)s dQw4w9WgXcQ -o transcript.txt
   %(prog)s "https://youtu.be/dQw4w9WgXcQ" -t -l en es
 
-  # Summarize with Claude (requires ANTHROPIC_API_KEY):
+  # Summarize to stdout with Claude (requires ANTHROPIC_API_KEY):
   %(prog)s "VIDEO_URL" --summarize
 
-  # Summarize with OpenAI (requires OPENAI_API_KEY):
-  %(prog)s "VIDEO_URL" -s --model openai:gpt-4o
+  # Save as an Obsidian note:
+  %(prog)s "VIDEO_URL" --save "/path/to/vault/01-zettlekasten" --topic LLM --title "My Note Title"
 
-  # Summarize with a local Ollama model:
-  %(prog)s "VIDEO_URL" -s --model ollama:llama3
+  # Summarize to stdout AND save:
+  %(prog)s "VIDEO_URL" --summarize --save "/path/to/vault" --topic LLM --title "My Note Title"
 
-  # Custom system prompt:
-  %(prog)s "VIDEO_URL" -s --prompt "Summarize in Spanish, 3 bullet points max"
+  # Use a different model:
+  %(prog)s "VIDEO_URL" --summarize --model openai:gpt-4o
         '''
     )
 
@@ -42,7 +43,7 @@ Examples:
     )
     parser.add_argument(
         '-o', '--output',
-        help='Output file path (default: print to stdout)',
+        help='Output file path for the transcript (default: print to stdout)',
         default=None
     )
     parser.add_argument(
@@ -60,7 +61,7 @@ Examples:
     summarize_group = parser.add_argument_group('summarization options')
     summarize_group.add_argument(
         '-s', '--summarize',
-        help='Summarize the transcript using an AI model',
+        help='Summarize the transcript and print to stdout',
         action='store_true'
     )
     summarize_group.add_argument(
@@ -77,6 +78,29 @@ Examples:
         help='Custom system prompt override for the AI model',
         default=None,
         metavar='PROMPT'
+    )
+    summarize_group.add_argument(
+        '--save',
+        help=(
+            'Save summary as a markdown note. '
+            'Optionally specify a directory; omit to use DEFAULT_SAVE_DIR from exporter.py'
+        ),
+        nargs='?',
+        const=DEFAULT_SAVE_DIR,  # used when --save is passed without a directory
+        default=None,            # used when --save is not passed at all
+        metavar='DIR'
+    )
+    summarize_group.add_argument(
+        '--topic',
+        help="Topic tag used in the markdown filename (default: general). Example: LLM",
+        default='general',
+        metavar='TOPIC'
+    )
+    summarize_group.add_argument(
+        '--title',
+        help="Note title used in the markdown filename and heading (default: general)",
+        default='general',
+        metavar='TITLE'
     )
 
     return parser
@@ -98,7 +122,6 @@ def main():
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
 
-        # Create an instance of the API
         api = YouTubeTranscriptApi()
         transcript_list = api.list(video_id)
 
@@ -119,24 +142,18 @@ def main():
                 try:
                     transcript = transcript_list.find_generated_transcript(['en'])
                 except:
-                    # If no English transcript, get the first available one
                     for t in transcript_list:
                         transcript = t
                         break
         else:
-            # Get the first available transcript (usually auto-generated English)
             try:
                 transcript = transcript_list.find_generated_transcript(['en'])
             except:
-                # If no auto-generated English, get the first available transcript
                 for t in transcript_list:
                     transcript = t
                     break
 
         transcript_data = transcript.fetch()
-
-        # Format transcript
-        # Convert to raw dict format for compatibility
         formatted_transcript = format_transcript(transcript_data.to_raw_data(), args.timestamps)
 
         # Output transcript
@@ -148,9 +165,14 @@ def main():
             print("\n--- TRANSCRIPT ---\n")
             print(formatted_transcript)
 
-        # Optional summarization
-        if args.summarize:
-            _run_summarization(formatted_transcript, args)
+        # Summarization (triggered by --summarize or --save)
+        if args.summarize or args.save:
+            summary = _get_summary(formatted_transcript, args)
+            if args.summarize:
+                print("\n--- SUMMARY ---\n")
+                print(summary)
+            if args.save:
+                _save_note(summary, video_id, args)
 
     except ImportError:
         print("Error: youtube-transcript-api is not installed.")
@@ -161,7 +183,7 @@ def main():
         sys.exit(1)
 
 
-def _run_summarization(transcript_text: str, args: argparse.Namespace) -> None:
+def _get_summary(transcript_text: str, args: argparse.Namespace) -> str:
     from youtube_summarizer.summarizer import summarize, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT
 
     model = args.model or DEFAULT_MODEL
@@ -169,15 +191,26 @@ def _run_summarization(transcript_text: str, args: argparse.Namespace) -> None:
 
     print(f"\nSummarizing with model: {model}")
     try:
-        summary = summarize(transcript_text, model=model, system_prompt=system_prompt)
-        print("\n--- SUMMARY ---\n")
-        print(summary)
+        return summarize(transcript_text, model=model, system_prompt=system_prompt)
     except ImportError as e:
         print(f"Error: {e}")
         sys.exit(1)
     except Exception as e:
         print(f"Error during summarization: {e}")
         sys.exit(1)
+
+
+def _save_note(summary: str, video_id: str, args: argparse.Namespace) -> None:
+    from youtube_summarizer.exporter import build_filename, build_markdown, write_markdown
+
+    filename = build_filename(args.topic, args.title)
+    content = build_markdown(args.title, video_id, args.topic, summary)
+    try:
+        path = write_markdown(args.save, filename, content)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    print(f"\nNote saved to: {path}")
 
 
 if __name__ == '__main__':
