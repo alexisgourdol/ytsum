@@ -35,29 +35,33 @@ def build_filename(topic: str, title: str) -> str:
     return f"{today} {sanitize_filename(topic)} - {sanitize_filename(title)}.md"
 
 
-def build_markdown(title: str, video_id: str, topic: str, summary: str) -> str:
+def build_markdown(title: str, video_id: str, topic: str, summary: str, transcript: str | None = None) -> str:
     """
     Build the markdown note content.
 
     Args:
-        title:    Note title (used as the H1 heading)
-        video_id: YouTube video ID (used to construct the URL)
-        topic:    Topic tag
-        summary:  AI-generated summary text (expected to include ## Summary
-                  and ## Key Takeaways sections)
+        title:      Note title (used as the H1 heading)
+        video_id:   YouTube video ID (used to construct the URL)
+        topic:      Topic tag
+        summary:    AI-generated summary text (expected to include ## Summary
+                    and ## Key Takeaways sections)
+        transcript: Optional raw transcript text to append under ## Transcript
 
     Returns:
         Full markdown content as a string.
     """
     today = date.today().strftime("%Y-%m-%d")
     url = f"https://www.youtube.com/watch?v={video_id}"
-    return (
+    content = (
         f"# {title}\n\n"
         f"**Date**: {today}\n"
         f"**URL**: {url}\n"
         f"**Topic**: {topic}\n\n"
         f"{summary}"
     )
+    if transcript:
+        content += f"\n\n## Transcript\n\n{transcript}"
+    return content
 
 
 def write_markdown(output_dir: str, filename: str, content: str) -> Path:

@@ -102,6 +102,11 @@ Examples:
         default='general',
         metavar='TITLE'
     )
+    summarize_group.add_argument(
+        '--include-transcript',
+        help='Append the full transcript under a ## Transcript section in the saved note',
+        action='store_true'
+    )
 
     return parser
 
@@ -172,7 +177,8 @@ def main():
                 print("\n--- SUMMARY ---\n")
                 print(summary)
             if args.save:
-                _save_note(summary, video_id, args)
+                transcript = formatted_transcript if args.include_transcript else None
+                _save_note(summary, video_id, args, transcript=transcript)
 
     except ImportError:
         print("Error: youtube-transcript-api is not installed.")
@@ -200,14 +206,14 @@ def _get_summary(transcript_text: str, args: argparse.Namespace) -> str:
         sys.exit(1)
 
 
-def _save_note(summary: str, video_id: str, args: argparse.Namespace) -> None:
+def _save_note(summary: str, video_id: str, args: argparse.Namespace, transcript: str | None = None) -> None:
     from youtube_summarizer.exporter import build_filename, build_markdown, write_markdown
 
     if not args.save:
         print("Error: no save directory specified. Pass a path to --save or set the YTSUM_SAVE_DIR environment variable.")
         sys.exit(1)
     filename = build_filename(args.topic, args.title)
-    content = build_markdown(args.title, video_id, args.topic, summary)
+    content = build_markdown(args.title, video_id, args.topic, summary, transcript=transcript)
     try:
         path = write_markdown(args.save, filename, content)
     except FileNotFoundError as e:
