@@ -16,17 +16,17 @@ class TestSummarize:
         mock_agent_class.return_value = mock_instance
 
         from youtube_summarizer.summarizer import summarize
-        result = summarize("transcript text", model="anthropic:claude-sonnet-4-6")
+        result = summarize("transcript text", model="anthropic:claude-sonnet-5-5")
 
         mock_agent_class.assert_called_once_with(
-            "anthropic:claude-sonnet-4-6",
+            "anthropic:claude-sonnet-5-5",
             instructions=mocker.ANY,
         )
         mock_instance.run_sync.assert_called_once()
         assert result == "Great summary."
 
     def test_summarize_uses_default_model(self, mocker):
-        """summarize() defaults to anthropic:claude-sonnet-4-6"""
+        """summarize() defaults to anthropic:claude-haiku-5-5"""
         mock_agent_class = mocker.patch("pydantic_ai.Agent")
         mock_instance = MagicMock()
         mock_instance.run_sync.return_value = MagicMock(output="summary")

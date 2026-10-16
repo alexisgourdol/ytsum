@@ -67,7 +67,7 @@ Examples:
     summarize_group.add_argument(
         '--model',
         help=(
-            "AI model in 'provider:model-name' format (default: anthropic:claude-sonnet-4-6). "
+            "AI model in 'provider:model-name' format (default: anthropic:claude-haiku-5-5). "
             "Examples: openai:gpt-4o, ollama:llama3, groq:llama-3.1-70b-versatile"
         ),
         default=None,

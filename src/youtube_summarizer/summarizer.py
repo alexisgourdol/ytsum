@@ -1,6 +1,6 @@
 """AI summarization using pydantic-ai."""
 
-DEFAULT_MODEL = "anthropic:claude-sonnet-4-6"
+DEFAULT_MODEL = "anthropic:claude-haiku-5-5"
 DEFAULT_SYSTEM_PROMPT = (
     "You are an expert at summarizing YouTube video transcripts. "
     "Structure your response with exactly these two markdown sections:\n\n"
@@ -22,7 +22,7 @@ def summarize(
     Args:
         transcript:    The formatted transcript text to summarize.
         model:         Model string in 'provider:model-name' format.
-                       Examples: 'anthropic:claude-sonnet-4-6', 'openai:gpt-4o',
+                       Examples: 'anthropic:claude-haiku-5-5', 'openai:gpt-4o',
                        'ollama:llama3', 'groq:llama-3.1-70b-versatile'
         system_prompt: System prompt / instructions for the AI.
 

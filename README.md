@@ -126,7 +126,7 @@ youtube-summarizer "VIDEO_ID" -l en es fr
 youtube-summarizer "VIDEO_URL" --summarize
 
 # Summarize with a specific model
-youtube-summarizer "VIDEO_URL" -s --model anthropic:claude-opus-4-6
+youtube-summarizer "VIDEO_URL" -s --model anthropic:claude-sonnet-5-5
 
 # Summarize with OpenAI (requires OPENAI_API_KEY)
 youtube-summarizer "VIDEO_URL" -s --model openai:gpt-4o
@@ -182,7 +182,7 @@ summary = summarize(transcript, model="openai:gpt-4o")
 summary = summarize(transcript, model="ollama:llama3")
 
 # Custom system prompt
-summary = summarize(transcript, model="anthropic:claude-sonnet-4-6",
+summary = summarize(transcript, model="anthropic:claude-sonnet-5-5",
                     system_prompt="List the 5 key takeaways as bullet points.")
 ```
 
