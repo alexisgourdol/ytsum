@@ -32,6 +32,11 @@ class TestExtractVideoId:
         url = "https://www.youtube.com/v/dQw4w9WgXcQ"
         assert extract_video_id(url) == "dQw4w9WgXcQ"
 
+    def test_extract_from_shorts_url(self):
+        """Test extraction from YouTube Shorts URL"""
+        url = "https://www.youtube.com/shorts/oLx4yCbeklQ"
+        assert extract_video_id(url) == "oLx4yCbeklQ"
+
     def test_direct_video_id(self):
         """Test with direct video ID (11 characters)"""
         video_id = "dQw4w9WgXcQ"
