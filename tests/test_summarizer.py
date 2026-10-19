@@ -371,3 +371,12 @@ class TestCliNoSummarize:
         main()
 
         mock_run_summarization.assert_not_called()
+
+
+class TestProviderExtras:
+    """The installed provider SDKs must be ones pydantic-ai can load"""
+
+    def test_anthropic_model_loads_when_sdk_installed(self):
+        """With the [anthropic] extra installed, pydantic-ai's Anthropic model imports"""
+        pytest.importorskip("anthropic")
+        import pydantic_ai.models.anthropic  # noqa: F401
