@@ -71,4 +71,6 @@ def summarize_run(
         f"Please summarize the following YouTube transcript:\n\n{transcript}"
     )
     duration_s = time.monotonic() - started
-    return SummaryResult(output=result.output, usage=result.usage(), duration_s=duration_s)
+    # pydantic-ai 2.x exposes usage as a property; 1.x as a method.
+    usage = result.usage() if callable(result.usage) else result.usage
+    return SummaryResult(output=result.output, usage=usage, duration_s=duration_s)
