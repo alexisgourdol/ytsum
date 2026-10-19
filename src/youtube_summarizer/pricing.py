@@ -50,14 +50,16 @@ def estimate_cost(
     Estimate the USD cost of a run, or None if the model has no known price.
 
     Args:
-        model:              Model string, with or without a provider prefix
+        model:              Model string, bare or with the 'anthropic:' prefix
                             (e.g. 'anthropic:claude-haiku-5-5').
         input_tokens:       Prompt tokens, including cache reads and writes.
         output_tokens:      Generated tokens.
         cache_read_tokens:  Prompt tokens served from the cache.
         cache_write_tokens: Prompt tokens written to the cache.
     """
-    name = model.split(":", 1)[-1]
+    # Only Anthropic's own API is priced: the same model through another
+    # provider (Bedrock, Vertex, ...) bills differently, so it gets no estimate.
+    name = model.removeprefix("anthropic:")
     price = PRICES.get(name)
     if price is None:
         return None

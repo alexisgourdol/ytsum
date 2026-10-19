@@ -33,6 +33,11 @@ class TestEstimateCost:
         # 400K uncached at $2, 500K cache reads at $0.20, 100K cache writes at 1.25 x $2
         assert cost == pytest.approx(0.4 * 2.00 + 0.5 * 0.20 + 0.1 * 2.50)
 
+    def test_other_provider_prefix_returns_none(self):
+        """Claude served through another provider has other prices: no guess"""
+        assert estimate_cost("google-vertex:claude-sonnet-5-5", 1_000, 100) is None
+        assert estimate_cost("bedrock:claude-sonnet-5-5", 1_000, 100) is None
+
     def test_unknown_model_returns_none(self):
         """Models missing from the table get no cost, never a guess"""
         assert estimate_cost("openai:gpt-4o", 1_000, 100) is None

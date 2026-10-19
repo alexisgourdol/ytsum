@@ -264,20 +264,18 @@ class TestCliSummarization:
         [row] = _logged_runs(isolated_run_log)
         assert row["est_cost_usd"] is None
 
-    def test_get_summary_logs_failed_run(self, mocker, isolated_run_log):
-        """A model failure is recorded with status=error before exiting"""
-        mocker.patch(
-            "youtube_summarizer.summarizer.summarize_run",
-            side_effect=Exception("API rate limit"),
-        )
-
+    def test_get_summary_logs_failed_run(self, isolated_run_log):
+        """A real pydantic-ai failure is recorded with status=error before exiting"""
         from youtube_summarizer.cli import _get_summary
-        with pytest.raises(SystemExit):
-            _get_summary("transcript", _args(), video_id="dQw4w9WgXcQ")
+        with pytest.raises(SystemExit) as exc:
+            _get_summary("transcript", _args(model="no-such-provider:model"), video_id="dQw4w9WgXcQ")
 
+        assert exc.value.code == 1
         [row] = _logged_runs(isolated_run_log)
         assert row["status"] == "error"
-        assert row["error"] == "API rate limit"
+        assert row["model"] == "no-such-provider:model"
+        assert row["video_id"] == "dQw4w9WgXcQ"
+        assert "no-such-provider" in row["error"]
         assert row["input_tokens"] is None
         assert row["est_cost_usd"] is None
 
