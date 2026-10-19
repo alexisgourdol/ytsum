@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "youtube-transcript-api>=0.6.0",
-    "pydantic-ai-slim>=0.2.0",
+    "pydantic-ai-slim>=1.0.0",
 ]
 
 [project.optional-dependencies]

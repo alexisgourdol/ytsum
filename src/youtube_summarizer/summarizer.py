@@ -1,5 +1,9 @@
 """AI summarization using pydantic-ai."""
 
+import time
+from dataclasses import dataclass
+from typing import Any
+
 DEFAULT_MODEL = "anthropic:claude-haiku-5-5"
 DEFAULT_SYSTEM_PROMPT = (
     "You are an expert at summarizing YouTube video transcripts. "
@@ -9,6 +13,14 @@ DEFAULT_SYSTEM_PROMPT = (
     "## Key Takeaways\n"
     "3-5 bullet points of the most important points from the video."
 )
+
+
+@dataclass
+class SummaryResult:
+    """A summary, the token usage of the run that produced it, and how long the model call took."""
+    output: str
+    usage: Any  # pydantic_ai.usage.RunUsage; pydantic-ai is imported lazily
+    duration_s: float
 
 
 def summarize(
@@ -29,6 +41,22 @@ def summarize(
     Returns:
         Summary string from the model.
     """
+    return summarize_run(transcript, model=model, system_prompt=system_prompt).output
+
+
+def summarize_run(
+    transcript: str,
+    model: str = DEFAULT_MODEL,
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+) -> SummaryResult:
+    """
+    Like summarize(), but also returns the run's token usage.
+
+    Returns:
+        SummaryResult with the summary, a pydantic-ai RunUsage
+        (input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, requests)
+        and the duration of the model call alone, in seconds.
+    """
     try:
         from pydantic_ai import Agent
     except ImportError:
@@ -38,7 +66,9 @@ def summarize(
         )
 
     agent = Agent(model, instructions=system_prompt)
+    started = time.monotonic()
     result = agent.run_sync(
         f"Please summarize the following YouTube transcript:\n\n{transcript}"
     )
-    return result.output
+    duration_s = time.monotonic() - started
+    return SummaryResult(output=result.output, usage=result.usage(), duration_s=duration_s)

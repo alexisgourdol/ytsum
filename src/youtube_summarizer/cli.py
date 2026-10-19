@@ -34,12 +34,16 @@ Examples:
 
   # Use a different model:
   %(prog)s "VIDEO_URL" --summarize --model openai:gpt-4o
+
+  # Token usage, cost and timing of past runs, by model:
+  %(prog)s --stats
         '''
     )
 
     parser.add_argument(
         'video',
-        help='YouTube video URL or video ID'
+        help='YouTube video URL or video ID',
+        nargs='?',
     )
     parser.add_argument(
         '-o', '--output',
@@ -108,12 +112,25 @@ Examples:
         action='store_true'
     )
 
+    parser.add_argument(
+        '--stats',
+        help='Show token usage, cost and timing of past runs by model, then exit',
+        action='store_true'
+    )
+
     return parser
 
 
 def main():
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.stats:
+        from youtube_summarizer.runlog import render_stats
+        print(render_stats())
+        return
+    if not args.video:
+        parser.error("the following arguments are required: video")
 
     # Extract video ID
     video_id = extract_video_id(args.video)
@@ -172,13 +189,14 @@ def main():
 
         # Summarization (triggered by --summarize or --save)
         if args.summarize or args.save:
-            summary = _get_summary(formatted_transcript, args)
+            summary, usage_line = _get_summary(formatted_transcript, args, video_id=video_id)
             if args.summarize:
                 print("\n--- SUMMARY ---\n")
                 print(summary)
             if args.save:
                 transcript = formatted_transcript if args.include_transcript else None
                 _save_note(summary, video_id, args, transcript=transcript)
+            print(f"\n{usage_line}")
 
     except ImportError:
         print("Error: youtube-transcript-api is not installed.")
@@ -189,21 +207,60 @@ def main():
         sys.exit(1)
 
 
-def _get_summary(transcript_text: str, args: argparse.Namespace) -> str:
-    from youtube_summarizer.summarizer import summarize, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT
+def _get_summary(
+    transcript_text: str, args: argparse.Namespace, video_id: str | None = None
+) -> tuple[str, str]:
+    """Summarize and log the run. Returns the summary and its one-line usage summary."""
+    import time
+
+    from youtube_summarizer.pricing import estimate_cost
+    from youtube_summarizer.runlog import format_usage_line, record_run
+    from youtube_summarizer.summarizer import summarize_run, DEFAULT_MODEL, DEFAULT_SYSTEM_PROMPT
 
     model = args.model or DEFAULT_MODEL
     system_prompt = args.prompt or DEFAULT_SYSTEM_PROMPT
+    run = {
+        "video_id": video_id,
+        "title": args.title,
+        "topic": args.topic,
+        "model": model,
+        "transcript_chars": len(transcript_text),
+    }
 
     print(f"\nSummarizing with model: {model}")
+    started = time.monotonic()
     try:
-        return summarize(transcript_text, model=model, system_prompt=system_prompt)
-    except ImportError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
+        result = summarize_run(transcript_text, model=model, system_prompt=system_prompt)
     except Exception as e:
-        print(f"Error during summarization: {e}")
+        record_run({**run, "duration_s": time.monotonic() - started, "status": "error", "error": str(e)})
+        if isinstance(e, ImportError):
+            print(f"Error: {e}")
+        else:
+            print(f"Error during summarization: {e}")
         sys.exit(1)
+
+    usage = result.usage
+    cost = estimate_cost(
+        model,
+        usage.input_tokens,
+        usage.output_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        cache_write_tokens=usage.cache_write_tokens,
+    )
+    record_run({
+        **run,
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_read_tokens": usage.cache_read_tokens,
+        "cache_write_tokens": usage.cache_write_tokens,
+        "requests": usage.requests,
+        "est_cost_usd": cost,
+        "duration_s": result.duration_s,
+        "summary_chars": len(result.output),
+        "status": "ok",
+    })
+    usage_line = format_usage_line(usage.input_tokens, usage.output_tokens, cost, result.duration_s)
+    return result.output, usage_line
 
 
 def _save_note(summary: str, video_id: str, args: argparse.Namespace, transcript: str | None = None) -> None:
