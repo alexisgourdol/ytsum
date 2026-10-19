@@ -68,7 +68,7 @@ def record_run(row: dict) -> None:
         row: Values for COLUMNS; timestamp and ytsum_version are filled in.
              Missing keys are stored as NULL.
     """
-    if os.environ.get("YTSUM_NO_RUN_LOG"):
+    if os.environ.get("YTSUM_NO_RUN_LOG", "").strip().lower() not in ("", "0", "false", "no"):
         return
 
     values = {c: row.get(c) for c in COLUMNS}
@@ -121,12 +121,7 @@ def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     return ["  ".join(cell.ljust(w) for cell, w in zip(r, widths)).rstrip() for r in [header, *rows]]
 
 
-def render_stats(path: Optional[Path] = None) -> str:
-    """Per-model totals and the most recent runs, as plain text."""
-    path = path or db_path()
-    if not path.exists():
-        return f"No runs recorded yet (run log: {path})"
-
+def _query_stats(path: Path) -> tuple[list, list]:
     conn = sqlite3.connect(path)
     try:
         conn.execute(SCHEMA)
@@ -150,6 +145,19 @@ def render_stats(path: Optional[Path] = None) -> str:
         ).fetchall()
     finally:
         conn.close()
+    return by_model, recent
+
+
+def render_stats(path: Optional[Path] = None) -> str:
+    """Per-model totals and the most recent runs, as plain text."""
+    path = path or db_path()
+    if not path.exists():
+        return f"No runs recorded yet (run log: {path})"
+
+    try:
+        by_model, recent = _query_stats(path)
+    except sqlite3.Error as e:
+        return f"Could not read run log at {path}: {e}"
 
     if not by_model:
         return f"No runs recorded yet (run log: {path})"

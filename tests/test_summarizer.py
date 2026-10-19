@@ -110,13 +110,14 @@ class TestSummarizeRun:
         assert result.usage.input_tokens > 0
         assert result.usage.output_tokens > 0
         assert result.usage.requests == 1
+        assert result.duration_s >= 0
 
 
-def _summary_result(output="This is the summary.", input_tokens=1_000, output_tokens=100):
+def _summary_result(output="This is the summary.", input_tokens=1_000, output_tokens=100, duration_s=2.5):
     from pydantic_ai.usage import RunUsage
     from youtube_summarizer.summarizer import SummaryResult
     usage = RunUsage(input_tokens=input_tokens, output_tokens=output_tokens, requests=1)
-    return SummaryResult(output=output, usage=usage)
+    return SummaryResult(output=output, usage=usage, duration_s=duration_s)
 
 
 def _args(**overrides):
@@ -146,9 +147,9 @@ class TestCliSummarization:
         )
 
         from youtube_summarizer.cli import _get_summary
-        result = _get_summary("fake transcript", _args())
+        summary, _ = _get_summary("fake transcript", _args())
 
-        assert result == "This is the summary."
+        assert summary == "This is the summary."
 
     def test_get_summary_passes_model_override(self, mocker):
         """_get_summary() forwards --model to summarize_run()"""
@@ -203,43 +204,52 @@ class TestCliSummarization:
             _get_summary("transcript", _args())
         assert exc.value.code == 1
 
-    def test_get_summary_prints_usage_line(self, mocker, capsys):
-        """After the summary, one line shows tokens, cost and time"""
+    def test_get_summary_returns_usage_line(self, mocker):
+        """_get_summary() returns the line showing tokens, cost and time"""
         mocker.patch(
             "youtube_summarizer.summarizer.summarize_run",
-            return_value=_summary_result(input_tokens=12_345, output_tokens=678),
+            return_value=_summary_result(input_tokens=12_345, output_tokens=678, duration_s=4.21),
         )
 
         from youtube_summarizer.cli import _get_summary
-        _get_summary("transcript", _args())
+        _, line = _get_summary("transcript", _args())
 
-        out = capsys.readouterr().out
-        assert "Tokens: 12,345 in / 678 out · ~$0.0016 · " in out
+        assert line == "Tokens: 12,345 in / 678 out · ~$0.0016 · 4.2s"
 
-    def test_get_summary_logs_successful_run(self, mocker, isolated_run_log):
-        """A successful run is recorded with tokens, cost and sizes"""
-        mocker.patch(
-            "youtube_summarizer.summarizer.summarize_run",
-            return_value=_summary_result("12345", input_tokens=10_000, output_tokens=1_000),
-        )
-
+    def test_get_summary_logs_successful_run(self, isolated_run_log):
+        """A real (test-model) run is recorded with its tokens and sizes"""
         from youtube_summarizer.cli import _get_summary
-        _get_summary("a transcript", _args(), video_id="dQw4w9WgXcQ")
+        summary, _ = _get_summary("a transcript", _args(model="test"), video_id="dQw4w9WgXcQ")
 
         [row] = _logged_runs(isolated_run_log)
         assert row["status"] == "ok"
         assert row["video_id"] == "dQw4w9WgXcQ"
         assert row["title"] == "My note"
         assert row["topic"] == "LLM"
-        assert row["model"] == "anthropic:claude-haiku-5-5"
-        assert row["input_tokens"] == 10_000
-        assert row["output_tokens"] == 1_000
+        assert row["model"] == "test"
+        assert row["input_tokens"] > 0
+        assert row["output_tokens"] > 0
         assert row["requests"] == 1
-        assert row["est_cost_usd"] == pytest.approx(0.0015)
+        assert row["est_cost_usd"] is None
         assert row["transcript_chars"] == len("a transcript")
-        assert row["summary_chars"] == 5
+        assert row["summary_chars"] == len(summary)
         assert row["duration_s"] >= 0
         assert row["error"] is None
+
+    def test_get_summary_logs_cost_and_model_call_duration(self, mocker, isolated_run_log):
+        """The logged cost comes from the price table, the duration from the model call"""
+        mocker.patch(
+            "youtube_summarizer.summarizer.summarize_run",
+            return_value=_summary_result(input_tokens=10_000, output_tokens=1_000, duration_s=7.5),
+        )
+
+        from youtube_summarizer.cli import _get_summary
+        _get_summary("transcript", _args())
+
+        [row] = _logged_runs(isolated_run_log)
+        assert row["model"] == "anthropic:claude-haiku-5-5"
+        assert row["est_cost_usd"] == pytest.approx(0.0015)
+        assert row["duration_s"] == 7.5
 
     def test_get_summary_logs_unknown_model_cost_as_null(self, mocker, isolated_run_log):
         """A model without a price is logged with no cost"""
@@ -270,6 +280,28 @@ class TestCliSummarization:
         assert row["error"] == "API rate limit"
         assert row["input_tokens"] is None
         assert row["est_cost_usd"] is None
+
+
+class TestCliUsageLine:
+    """The usage line is printed once the summary is out"""
+
+    def test_usage_line_follows_summary(self, mocker, capsys, isolated_run_log):
+        mock_api_class = mocker.patch("youtube_transcript_api.YouTubeTranscriptApi")
+        mock_fetched = (
+            mock_api_class.return_value.list.return_value
+            .find_generated_transcript.return_value.fetch.return_value
+        )
+        mock_fetched.to_raw_data.return_value = [{"text": "hello", "start": 0.0, "duration": 1.0}]
+
+        import sys
+        mocker.patch.object(sys, "argv", ["youtube-summarizer", "dQw4w9WgXcQ", "--summarize", "--model", "test"])
+
+        from youtube_summarizer.cli import main
+        main()
+
+        out = capsys.readouterr().out
+        assert out.index("--- SUMMARY ---") < out.index("Tokens: ")
+        assert len(_logged_runs(isolated_run_log)) == 1
 
 
 class TestCliStats:

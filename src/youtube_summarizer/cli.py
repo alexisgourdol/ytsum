@@ -189,13 +189,14 @@ def main():
 
         # Summarization (triggered by --summarize or --save)
         if args.summarize or args.save:
-            summary = _get_summary(formatted_transcript, args, video_id=video_id)
+            summary, usage_line = _get_summary(formatted_transcript, args, video_id=video_id)
             if args.summarize:
                 print("\n--- SUMMARY ---\n")
                 print(summary)
             if args.save:
                 transcript = formatted_transcript if args.include_transcript else None
                 _save_note(summary, video_id, args, transcript=transcript)
+            print(f"\n{usage_line}")
 
     except ImportError:
         print("Error: youtube-transcript-api is not installed.")
@@ -206,7 +207,10 @@ def main():
         sys.exit(1)
 
 
-def _get_summary(transcript_text: str, args: argparse.Namespace, video_id: str | None = None) -> str:
+def _get_summary(
+    transcript_text: str, args: argparse.Namespace, video_id: str | None = None
+) -> tuple[str, str]:
+    """Summarize and log the run. Returns the summary and its one-line usage summary."""
     import time
 
     from youtube_summarizer.pricing import estimate_cost
@@ -234,7 +238,6 @@ def _get_summary(transcript_text: str, args: argparse.Namespace, video_id: str |
         else:
             print(f"Error during summarization: {e}")
         sys.exit(1)
-    duration_s = time.monotonic() - started
 
     usage = result.usage
     cost = estimate_cost(
@@ -244,7 +247,6 @@ def _get_summary(transcript_text: str, args: argparse.Namespace, video_id: str |
         cache_read_tokens=usage.cache_read_tokens,
         cache_write_tokens=usage.cache_write_tokens,
     )
-    print(format_usage_line(usage.input_tokens, usage.output_tokens, cost, duration_s))
     record_run({
         **run,
         "input_tokens": usage.input_tokens,
@@ -253,11 +255,12 @@ def _get_summary(transcript_text: str, args: argparse.Namespace, video_id: str |
         "cache_write_tokens": usage.cache_write_tokens,
         "requests": usage.requests,
         "est_cost_usd": cost,
-        "duration_s": duration_s,
+        "duration_s": result.duration_s,
         "summary_chars": len(result.output),
         "status": "ok",
     })
-    return result.output
+    usage_line = format_usage_line(usage.input_tokens, usage.output_tokens, cost, result.duration_s)
+    return result.output, usage_line
 
 
 def _save_note(summary: str, video_id: str, args: argparse.Namespace, transcript: str | None = None) -> None:

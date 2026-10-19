@@ -86,6 +86,12 @@ class TestRecordRun:
         record_run(_row())
         assert not isolated_run_log.exists()
 
+    def test_zero_does_not_disable(self, isolated_run_log, monkeypatch):
+        """YTSUM_NO_RUN_LOG=0 keeps logging on"""
+        monkeypatch.setenv("YTSUM_NO_RUN_LOG", "0")
+        record_run(_row())
+        assert len(_rows(isolated_run_log)) == 1
+
     def test_unwritable_path_only_warns(self, tmp_path, monkeypatch, capsys):
         """A DB that can't be written prints a warning instead of raising"""
         blocker = tmp_path / "not-a-dir"
@@ -114,6 +120,11 @@ class TestRenderStats:
 
     def test_no_runs_yet(self):
         assert "No runs recorded yet" in render_stats()
+
+    def test_unreadable_db_gives_message(self, isolated_run_log):
+        """A corrupt or non-SQLite file is reported, not a traceback"""
+        isolated_run_log.write_bytes(b"not a database" * 100)
+        assert "Could not read run log" in render_stats()
 
     def test_aggregates_by_model(self):
         """Per-model lines count ok runs and errors, and total the cost"""
