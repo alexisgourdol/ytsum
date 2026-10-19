@@ -112,6 +112,21 @@ class TestSummarizeRun:
         assert result.usage.requests == 1
         assert result.duration_s >= 0
 
+    def test_reads_usage_exposed_as_a_method(self, mocker):
+        """pydantic-ai 1.x exposes usage as result.usage(); 2.x as a property"""
+        from types import SimpleNamespace
+        from pydantic_ai.usage import RunUsage
+        usage = RunUsage(input_tokens=10, output_tokens=2, requests=1)
+        mock_agent_class = mocker.patch("pydantic_ai.Agent")
+        mock_agent_class.return_value.run_sync.return_value = SimpleNamespace(
+            output="summary", usage=lambda: usage
+        )
+
+        from youtube_summarizer.summarizer import summarize_run
+        result = summarize_run("transcript")
+
+        assert result.usage is usage
+
 
 def _summary_result(output="This is the summary.", input_tokens=1_000, output_tokens=100, duration_s=2.5):
     from pydantic_ai.usage import RunUsage

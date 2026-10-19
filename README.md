@@ -60,6 +60,8 @@ uv tool install '.[gemini]'
 uv tool install --reinstall '.[anthropic]'
 ```
 
+`uv tool install` doesn't read `uv.lock`: it resolves the newest versions allowed by `pyproject.toml`. Keep `uv.lock` on those same versions (`uv lock --upgrade`) so the test suite runs what the installed tool runs.
+
 ### Development Install
 
 For contributors who want to modify the code:
