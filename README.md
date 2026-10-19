@@ -22,6 +22,7 @@ This is another attempt, this time using
 - Multi-language support with fallback
 - AI summarization via any Pydantic AI supported provider (opt-in)
 - Save summaries as Obsidian-ready markdown notes (opt-in)
+- Local run log of token usage, estimated cost and timing, with `--stats` per model
 - CLI and library usage
 
 
@@ -104,6 +105,20 @@ export YTSUM_SAVE_DIR="/path/to/your/obsidian/vault"
 
 When set, `--save` with no argument will use this directory. If unset and `--save` is passed without a path, the CLI will print an error asking you to either pass a path or set the variable.
 
+### Run log (optional)
+
+Every summarization run, successful or not, is recorded in a local SQLite database:
+
+| Variable | Effect |
+|---|---|
+| (none) | Log to `$XDG_DATA_HOME/ytsum/runs.db`, i.e. `~/.local/share/ytsum/runs.db` by default |
+| `YTSUM_RUNS_DB=/path/runs.db` | Log to this file instead |
+| `YTSUM_NO_RUN_LOG=1` | Don't log |
+
+Each row holds the timestamp (UTC), video ID, title, topic, model, input/output/cache tokens, number of requests, estimated cost in USD, model call duration, transcript and summary length, status (`ok` / `error`) with the error message, and the ytsum version. If the database can't be written, a warning is printed and the run carries on.
+
+Costs are estimated from the price table in `src/youtube_summarizer/pricing.py` (Anthropic models). A model missing from that table is logged with no cost; add it there to get estimates.
+
 
 ## Usage
 
@@ -148,7 +163,12 @@ youtube-summarizer "VIDEO_URL" --save --topic LLM --title "My Note"
 
 # Summarize to stdout AND save
 youtube-summarizer "VIDEO_URL" --summarize --save "/path/to/vault" --topic LLM --title "My Note"
+
+# Token usage, cost and timing of past runs, by model, plus the 10 most recent runs
+youtube-summarizer --stats
 ```
+
+Each summary also prints one usage line, e.g. `Tokens: 12,345 in / 678 out · ~$0.0016 · 4.2s`.
 
 ### CLI Usage (Development Mode)
 
@@ -218,12 +238,17 @@ ytsum/
 │       ├── downloader.py    # Core transcript functions
 │       ├── summarizer.py    # AI summarization via Pydantic AI
 │       ├── exporter.py      # Markdown note generation and file export
+│       ├── pricing.py       # Per-model token prices and cost estimates
+│       ├── runlog.py        # SQLite run log and --stats output
 │       └── cli.py           # CLI entry point
 └── tests/
     ├── __init__.py
+    ├── conftest.py          # Points the run log at a temp DB for every test
     ├── test_downloader.py   # Tests for downloader module
     ├── test_summarizer.py   # Tests for summarizer module
-    └── test_exporter.py     # Tests for exporter module
+    ├── test_exporter.py     # Tests for exporter module
+    ├── test_pricing.py      # Tests for pricing module
+    └── test_runlog.py       # Tests for runlog module
 ```
 
 
