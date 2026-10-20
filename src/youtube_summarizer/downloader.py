@@ -4,7 +4,6 @@ Downloads transcripts from YouTube videos using video URL or ID.
 """
 
 import re
-import sys
 from typing import Optional
 
 
@@ -38,6 +37,10 @@ def extract_video_id(url_or_id: str) -> Optional[str]:
     return None
 
 
+class TranscriptError(Exception):
+    """A transcript could not be downloaded (no captions, network error, ...)."""
+
+
 def download_transcript(video_id: str, languages: list = None) -> str:
     """
     Download transcript for a YouTube video.
@@ -48,13 +51,16 @@ def download_transcript(video_id: str, languages: list = None) -> str:
 
     Returns:
         Transcript text as a string
+
+    Raises:
+        TranscriptError: if the library is missing or the download fails.
     """
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
-    except ImportError:
-        print("Error: youtube-transcript-api is not installed.")
-        print("Install it with: pip install youtube-transcript-api")
-        sys.exit(1)
+    except ImportError as e:
+        raise TranscriptError(
+            "youtube-transcript-api is not installed. Install it with: pip install youtube-transcript-api"
+        ) from e
 
     try:
         # Create an instance of the API
@@ -96,8 +102,7 @@ def download_transcript(video_id: str, languages: list = None) -> str:
         return format_transcript(transcript_data.to_raw_data())
 
     except Exception as e:
-        print(f"Error downloading transcript: {e}")
-        sys.exit(1)
+        raise TranscriptError(f"Error downloading transcript for {video_id}: {e}") from e
 
 
 def format_transcript(transcript_data: list, include_timestamps: bool = False) -> str:
