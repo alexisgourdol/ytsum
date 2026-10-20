@@ -64,6 +64,18 @@ class TestSummarize:
         prompt_arg = mock_instance.run_sync.call_args[0][0]
         assert "my unique transcript content" in prompt_arg
 
+    def test_summarize_run_user_prefix_replaces_default(self, mocker):
+        """summarize_run(user_prefix="") sends the text as-is (the digest builds its own message)"""
+        mock_agent_class = mocker.patch("pydantic_ai.Agent")
+        mock_instance = MagicMock()
+        mock_instance.run_sync.return_value = MagicMock(output="x", usage=MagicMock())
+        mock_agent_class.return_value = mock_instance
+
+        from youtube_summarizer.summarizer import summarize_run
+        summarize_run("exact message", user_prefix="")
+
+        assert mock_instance.run_sync.call_args[0][0] == "exact message"
+
     def test_summarize_returns_output_string(self, mocker):
         """summarize() returns the .output attribute of the agent result"""
         mock_agent_class = mocker.patch("pydantic_ai.Agent")

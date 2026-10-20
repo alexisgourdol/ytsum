@@ -149,3 +149,40 @@ class TestRenderStats:
         recent = render_stats().split("Recent runs")[1]
         titles = [w for w in recent.split() if w.startswith("note-")]
         assert titles == [f"note-{i}" for i in range(11, 1, -1)]
+
+
+class TestKindColumn:
+    """The digest logs a call kind (judge / summary / deep_dive) per row"""
+
+    OLD_SCHEMA = """
+    CREATE TABLE runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL, video_id TEXT, title TEXT,
+        topic TEXT, model TEXT NOT NULL, input_tokens INTEGER, output_tokens INTEGER,
+        cache_read_tokens INTEGER, cache_write_tokens INTEGER, requests INTEGER, est_cost_usd REAL,
+        duration_s REAL, transcript_chars INTEGER, summary_chars INTEGER, status TEXT NOT NULL,
+        error TEXT, ytsum_version TEXT)
+    """
+
+    def test_runlog_migrates_old_db(self, isolated_run_log):
+        conn = sqlite3.connect(isolated_run_log)
+        with conn:
+            conn.execute(self.OLD_SCHEMA)
+            conn.execute("INSERT INTO runs (timestamp, model, status) VALUES ('2026-10-01T00:00:00+00:00', 'anthropic:claude-haiku-5-5', 'ok')")
+        conn.close()
+
+        record_run(_row(model="claude-code:claude-haiku-5-5", kind="summary"))
+
+        rows = _rows(isolated_run_log)
+        assert len(rows) == 2
+        assert rows[0]["kind"] is None
+        assert rows[1]["kind"] == "summary"
+        out = render_stats()
+        line = next(l for l in out.splitlines() if l.startswith("claude-code:claude-haiku-5-5"))
+        assert line.split()[-1] == "summary"
+
+    def test_stats_separates_kinds_of_one_model(self):
+        record_run(_row(kind="judge"))
+        record_run(_row(kind="summary"))
+        lines = [l for l in render_stats().split("Recent runs")[0].splitlines()
+                 if l.startswith("anthropic:claude-haiku-5-5")]
+        assert sorted(l.split()[-1] for l in lines) == ["judge", "summary"]
