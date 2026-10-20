@@ -397,3 +397,13 @@ class TestProviderExtras:
         monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
         from pydantic_ai import Agent
         Agent("google:gemini-2.5-flash")
+
+
+class TestHelpText:
+    """--help shows how to pick a Gemini model"""
+
+    def test_help_shows_gemini_model_example(self):
+        from youtube_summarizer.cli import build_parser
+        help_text = build_parser().format_help()
+        assert "google:gemini-2.5-flash" in help_text
+        assert "gemini:gemini" not in help_text

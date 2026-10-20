@@ -36,6 +36,9 @@ Examples:
   # Use a different model:
   %(prog)s "VIDEO_URL" --summarize --model openai:gpt-4o
 
+  # Use Gemini (requires the [gemini] extra and GOOGLE_API_KEY):
+  %(prog)s "VIDEO_URL" --summarize --model google:gemini-2.5-flash
+
   # Token usage, cost and timing of past runs, by model:
   %(prog)s --stats
 
@@ -76,7 +79,7 @@ Examples:
         '--model',
         help=(
             "AI model in 'provider:model-name' format (default: anthropic:claude-haiku-5-5). "
-            "Examples: openai:gpt-4o, ollama:llama3, groq:llama-3.1-70b-versatile"
+            "Examples: openai:gpt-4o, google:gemini-2.5-flash, ollama:llama3, groq:llama-3.1-70b-versatile"
         ),
         default=None,
         metavar='MODEL'
