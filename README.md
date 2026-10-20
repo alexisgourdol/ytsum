@@ -152,6 +152,43 @@ Phoenix has no login by default: binding it to `127.0.0.1` as above keeps other 
 
 If no collector is listening, ytsum prints a warning and runs without tracing. Without the `[trace]` extra, `--trace` exits with an install hint.
 
+### Run log vs tracing
+
+| | Run log + `--stats` | `--trace` |
+|---|---|---|
+| Answers | How are my runs going over time? | What exactly happened in this run? |
+| Records | Tokens, estimated cost, model-call time and status, for every run | The prompt sent, the full response, time per step (transcript download, model call), errors |
+| When | Always on | Only when you ask for it |
+| Needs | Nothing | Phoenix running on your machine |
+| Read it | `youtube-summarizer --stats` in the terminal | http://localhost:6006, project `ytsum` |
+
+Every run is written to the run log, with or without `--trace`. The log lives in your home folder (`~/.local/share/ytsum/runs.db`), outside this repo, so it's never committed.
+
+Costs in `--stats` and in the usage line are estimates: the token counts come from the provider's API, and the price per token from ytsum's table in `src/youtube_summarizer/pricing.py`. Your bill can differ if prices change or your account has different rates.
+
+`--trace` isn't meant for every run. Add it when:
+
+- a summary looks wrong or thin, to see exactly what the model received and returned;
+- you compare models or prompts on the same video and want to read the outputs side by side;
+- a run is slow or fails, to see which step took the time or broke.
+
+For example, your usual command with tracing for one run:
+
+```bash
+youtube-summarizer "https://www.youtube.com/watch?v=VIDEO_ID" \
+  --save \
+  --topic LLM \
+  --title "Note title" \
+  --include-transcript \
+  --trace
+```
+
+Phoenix keeps its traces inside its Docker container (in `/root/.phoenix`): stopping and restarting the same container keeps them, removing it deletes them. To keep traces across containers, store them in a folder on your machine:
+
+```bash
+docker run -p 127.0.0.1:6006:6006 -v ~/.phoenix:/root/.phoenix arizephoenix/phoenix
+```
+
 
 ## Usage
 
