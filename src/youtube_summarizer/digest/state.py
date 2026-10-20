@@ -25,6 +25,7 @@ class VideoRecord:
     attempts: int = 0
     note_path: str = ""
     duration_s: Optional[int] = None
+    judged: bool = False  # the judge already found it on topic
 
 
 @dataclass

@@ -41,9 +41,15 @@ def _eligible(rec: VideoRecord, cfg: Config) -> bool:
     return rec.status == "pending" or (rec.status == "failed" and rec.attempts < cfg.max_attempts)
 
 
-def pick(state: State, cfg: Config) -> list[VideoRecord]:
+def eligible(state: State, cfg: Config) -> list[VideoRecord]:
+    """Videos still waiting: pending, or failed with attempts left."""
+    return [r for r in state.videos.values() if _eligible(r, cfg)]
+
+
+def pick(state: State, cfg: Config, require_judged: bool = False) -> list[VideoRecord]:
     """Newest first, at most per_channel_cap per channel and daily_cap in total."""
-    candidates = sorted((r for r in state.videos.values() if _eligible(r, cfg)), key=_published, reverse=True)
+    candidates = sorted((r for r in eligible(state, cfg) if r.judged or not require_judged),
+                        key=_published, reverse=True)
     picked, per_channel = [], {}
     for rec in candidates:
         if len(picked) >= cfg.daily_cap:
