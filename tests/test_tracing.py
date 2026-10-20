@@ -124,6 +124,66 @@ class TestTracedRun:
         assert Agent._instrument_default is False
 
 
+class TestTracedRunTiming:
+    """Exporting spans must not slow the run down or inflate the logged model time"""
+
+    def test_slow_collector_does_not_inflate_model_time(self, mocker, isolated_run_log):
+        import time
+        from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+        class SlowExporter(InMemorySpanExporter):
+            def export(self, spans):
+                time.sleep(0.5)
+                return super().export(spans)
+
+        exporter = SlowExporter()
+        mocker.patch("youtube_summarizer.tracing._default_exporter", return_value=exporter)
+        _mock_transcript(mocker)
+        _run_cli(mocker, "--trace")
+
+        import sqlite3
+        conn = sqlite3.connect(isolated_run_log)
+        [(duration_s,)] = conn.execute("SELECT duration_s FROM runs").fetchall()
+        conn.close()
+        assert duration_s < 0.4
+        # Spans are still all delivered once the run ends
+        assert "ytsum run" in {s.name for s in exporter.get_finished_spans()}
+
+
+class TestFailedRunSpan:
+    """A run that fails is marked as an error on its root span"""
+
+    def _root(self, exporter):
+        return next(s for s in exporter.get_finished_spans() if s.name == "ytsum run")
+
+    def test_transcript_failure_marks_root_span(self, mocker, memory_exporter):
+        from opentelemetry.trace import StatusCode
+        mock_api_class = mocker.patch("youtube_transcript_api.YouTubeTranscriptApi")
+        mock_api_class.return_value.list.side_effect = Exception("video unavailable")
+
+        with pytest.raises(SystemExit):
+            _run_cli(mocker, "--trace")
+
+        assert self._root(memory_exporter).status.status_code == StatusCode.ERROR
+
+    def test_model_failure_marks_root_span(self, mocker, memory_exporter):
+        from opentelemetry.trace import StatusCode
+        _mock_transcript(mocker)
+        mocker.patch.object(sys, "argv", ["youtube-summarizer", "dQw4w9WgXcQ", "--summarize", "--model", "no-such-provider:model", "--trace"])
+        from youtube_summarizer.cli import main
+        with pytest.raises(SystemExit):
+            main()
+
+        assert self._root(memory_exporter).status.status_code == StatusCode.ERROR
+
+    def test_successful_run_is_not_an_error(self, mocker, memory_exporter):
+        from opentelemetry.trace import StatusCode
+        _mock_transcript(mocker)
+        _run_cli(mocker, "--trace")
+
+        assert self._root(memory_exporter).status.status_code != StatusCode.ERROR
+
+
 class TestTracingUnavailable:
     """--trace degrades instead of breaking the run"""
 

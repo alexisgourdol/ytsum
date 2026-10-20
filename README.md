@@ -126,15 +126,15 @@ Costs are estimated from the price table in `src/youtube_summarizer/pricing.py` 
 
 ### Tracing a run (optional)
 
-To inspect one run in depth (exact prompt and response, time per step, token counts, errors), send an OpenTelemetry trace to a local [Arize Phoenix](https://github.com/Arize-ai/phoenix). Nothing leaves your machine, and tracing is off unless you ask for it.
+To inspect one run in depth (exact prompt and response, time per step, token counts, errors), send an OpenTelemetry trace to a local [Arize Phoenix](https://github.com/Arize-ai/phoenix). Tracing is off unless you ask for it. Traces contain the full transcript, prompt and summary, and by default they only go to `localhost`.
 
 ```bash
 # 1. Install ytsum with the [trace] extra
 uv tool install --reinstall '.[anthropic,trace]'
 
-# 2. Start Phoenix (either one), then open http://localhost:6006
-docker run -p 6006:6006 arizephoenix/phoenix
-# or: pip install arize-phoenix && phoenix serve
+# 2. Start Phoenix on localhost only (either one), then open http://localhost:6006
+docker run -p 127.0.0.1:6006:6006 arizephoenix/phoenix
+# or: pip install arize-phoenix && PHOENIX_HOST=127.0.0.1 phoenix serve
 
 # 3. Run with --trace (or set YTSUM_TRACE=1)
 youtube-summarizer "VIDEO_URL" --summarize --trace
@@ -147,6 +147,8 @@ In Phoenix, open the `ytsum` project: each run is one trace, `ytsum run`, with a
 | `YTSUM_TRACE=1` | Same as `--trace` |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Send to another OTLP/HTTP collector (`/v1/traces` is appended) |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full traces URL, used as is |
+
+Phoenix has no login by default: binding it to `127.0.0.1` as above keeps other machines on your network from reading your traces. If `OTEL_EXPORTER_OTLP_ENDPOINT` is already set in your shell for another tool, `--trace` sends the full trace there instead; unset it (or set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:6006/v1/traces`) to keep traces local.
 
 If no collector is listening, ytsum prints a warning and runs without tracing. Without the `[trace]` extra, `--trace` exits with an install hint.
 

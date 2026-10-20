@@ -9,7 +9,7 @@ untraced runs load none of it.
 import os
 import socket
 import sys
-from contextlib import nullcontext
+from contextlib import contextmanager
 from typing import Optional
 from urllib.parse import urlsplit
 
@@ -88,9 +88,25 @@ class Tracer:
         self._provider.shutdown()
 
 
+@contextmanager
 def span(tracer: Optional[Tracer], name: str, **attributes):
-    """A span when tracing is on, otherwise a no-op context manager."""
-    return tracer.span(name, **attributes) if tracer else nullcontext()
+    """
+    A span when tracing is on, otherwise a no-op.
+
+    The CLI reports failures with sys.exit(1), which OpenTelemetry doesn't
+    count as an error, so a non-zero exit marks the span as failed here.
+    """
+    if tracer is None:
+        yield None
+        return
+    with tracer.span(name, **attributes) as current:
+        try:
+            yield current
+        except SystemExit as e:
+            if e.code not in (0, None):
+                from opentelemetry.trace import Status, StatusCode
+                current.set_status(Status(StatusCode.ERROR, f"exited with code {e.code}"))
+            raise
 
 
 def start() -> Optional[Tracer]:
@@ -105,7 +121,7 @@ def start() -> Optional[Tracer]:
         from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter  # noqa: F401
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
     except ImportError as e:
         raise TracingUnavailable(INSTALL_HINT) from e
 
@@ -120,7 +136,9 @@ def start() -> Optional[Tracer]:
     }))
     # Adds the OpenInference attributes Phoenix's LLM views read (prompt, response, tokens).
     provider.add_span_processor(OpenInferenceSpanProcessor())
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    # Exported in the background and flushed by shutdown(), so a slow collector
+    # never delays the run or inflates the logged model-call time.
+    provider.add_span_processor(BatchSpanProcessor(exporter))
 
     from pydantic_ai import Agent
     from pydantic_ai.models.instrumented import InstrumentationSettings
