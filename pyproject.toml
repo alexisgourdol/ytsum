@@ -13,9 +13,15 @@ dependencies = [
 anthropic = ["pydantic-ai-slim[anthropic]"]
 openai = ["pydantic-ai-slim[openai]"]
 gemini = ["google-generativeai>=0.8.0"]
+trace = [
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-http",
+    "openinference-instrumentation-pydantic-ai",
+]
 dev = [
     "pytest>=8.0.0",
     "pytest-mock>=3.12.0",
+    "youtube-summarizer[trace]",
 ]
 
 [project.scripts]

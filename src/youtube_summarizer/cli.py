@@ -11,6 +11,7 @@ from youtube_summarizer.downloader import (
     format_transcript,
 )
 from youtube_summarizer.exporter import DEFAULT_SAVE_DIR
+from youtube_summarizer import tracing
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -37,6 +38,9 @@ Examples:
 
   # Token usage, cost and timing of past runs, by model:
   %(prog)s --stats
+
+  # Trace a run in a local Phoenix (http://localhost:6006):
+  %(prog)s "VIDEO_URL" --summarize --trace
         '''
     )
 
@@ -113,6 +117,15 @@ Examples:
     )
 
     parser.add_argument(
+        '--trace',
+        help=(
+            'Send an OpenTelemetry trace of this run to a local Phoenix '
+            '(or OTEL_EXPORTER_OTLP_ENDPOINT); also enabled by YTSUM_TRACE=1. '
+            "Needs the [trace] extra"
+        ),
+        action='store_true'
+    )
+    parser.add_argument(
         '--stats',
         help='Show token usage, cost and timing of past runs by model, then exit',
         action='store_true'
@@ -140,43 +153,63 @@ def main():
 
     print(f"Downloading transcript for video ID: {video_id}")
 
+    tracer = None
+    if tracing.requested(args.trace):
+        try:
+            tracer = tracing.start()
+        except tracing.TracingUnavailable as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+
+    from youtube_summarizer.summarizer import DEFAULT_MODEL
+    try:
+        with tracing.span(tracer, "ytsum run", video_id=video_id, model=args.model or DEFAULT_MODEL, topic=args.topic):
+            _run(args, video_id, tracer)
+    finally:
+        if tracer:
+            tracer.shutdown()
+
+
+def _run(args: argparse.Namespace, video_id: str, tracer=None) -> None:
+    """Download the transcript, then print, summarize and save as asked."""
     # Download transcript
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
 
-        api = YouTubeTranscriptApi()
-        transcript_list = api.list(video_id)
+        with tracing.span(tracer, "transcript fetch"):
+            api = YouTubeTranscriptApi()
+            transcript_list = api.list(video_id)
 
-        if args.languages:
-            transcript = None
+            if args.languages:
+                transcript = None
 
-            for lang in args.languages:
-                try:
-                    transcript = transcript_list.find_transcript([lang])
-                    print(f"Found transcript in language: {lang}")
-                    break
-                except:
-                    continue
+                for lang in args.languages:
+                    try:
+                        transcript = transcript_list.find_transcript([lang])
+                        print(f"Found transcript in language: {lang}")
+                        break
+                    except:
+                        continue
 
-            if not transcript:
-                print(f"No transcript found in languages: {args.languages}")
-                print("Trying to get any available transcript...")
+                if not transcript:
+                    print(f"No transcript found in languages: {args.languages}")
+                    print("Trying to get any available transcript...")
+                    try:
+                        transcript = transcript_list.find_generated_transcript(['en'])
+                    except:
+                        for t in transcript_list:
+                            transcript = t
+                            break
+            else:
                 try:
                     transcript = transcript_list.find_generated_transcript(['en'])
                 except:
                     for t in transcript_list:
                         transcript = t
                         break
-        else:
-            try:
-                transcript = transcript_list.find_generated_transcript(['en'])
-            except:
-                for t in transcript_list:
-                    transcript = t
-                    break
 
-        transcript_data = transcript.fetch()
-        formatted_transcript = format_transcript(transcript_data.to_raw_data(), args.timestamps)
+            transcript_data = transcript.fetch()
+            formatted_transcript = format_transcript(transcript_data.to_raw_data(), args.timestamps)
 
         # Output transcript
         if args.output:
