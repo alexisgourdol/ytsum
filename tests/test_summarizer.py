@@ -380,3 +380,20 @@ class TestProviderExtras:
         """With the [anthropic] extra installed, pydantic-ai's Anthropic model imports"""
         pytest.importorskip("anthropic")
         import pydantic_ai.models.anthropic  # noqa: F401
+
+    def test_google_model_loads_when_gemini_extra_installed(self, monkeypatch):
+        """With the [gemini] extra installed, pydantic-ai's Google (Gemini) model loads"""
+        from importlib.metadata import PackageNotFoundError, version
+
+        def installed(dist):
+            try:
+                version(dist)
+                return True
+            except PackageNotFoundError:
+                return False
+
+        if not any(installed(d) for d in ("google-genai", "google-generativeai")):
+            pytest.skip("[gemini] extra not installed")
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
+        from pydantic_ai import Agent
+        Agent("google:gemini-2.5-flash")

@@ -98,6 +98,7 @@ All configuration is done via environment variables — nothing personal is stor
 ```bash
 export ANTHROPIC_API_KEY=$(awk 'NR==1' ~/.claude/api_key)   # Claude
 export OPENAI_API_KEY=$(awk 'NR==1' ~/.openai/api_key)       # OpenAI
+export GOOGLE_API_KEY=$(awk 'NR==1' ~/.google/api_key)       # Gemini (models as google:<model>)
 ```
 
 The `awk 'NR==1'` pattern reads only the first line of the file, which is safe if the file ever has trailing newlines or comments.
@@ -217,7 +218,7 @@ youtube-summarizer "VIDEO_URL" -s --model anthropic:claude-sonnet-5-5
 youtube-summarizer "VIDEO_URL" -s --model openai:gpt-4o
 
 # Summarize with Gemini
-youtube-summarizer "VIDEO_URL" -s --model gemini:gemini-2.0-flash
+youtube-summarizer "VIDEO_URL" -s --model google:gemini-2.5-flash
 
 # Summarize with a local Ollama model (no API key needed)
 youtube-summarizer "VIDEO_URL" -s --model ollama:llama3

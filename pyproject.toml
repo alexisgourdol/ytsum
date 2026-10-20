@@ -12,7 +12,7 @@ dependencies = [
 [project.optional-dependencies]
 anthropic = ["pydantic-ai-slim[anthropic]"]
 openai = ["pydantic-ai-slim[openai]"]
-gemini = ["google-generativeai>=0.8.0"]
+gemini = ["pydantic-ai-slim[google]"]
 trace = [
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-http",
