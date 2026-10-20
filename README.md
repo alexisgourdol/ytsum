@@ -56,6 +56,9 @@ uv tool install '.[openai]'
 # Install with Gemini support
 uv tool install '.[gemini]'
 
+# Add tracing support (see "Tracing a run" below)
+uv tool install '.[anthropic,trace]'
+
 # Reinstall to upgrade an existing installation
 uv tool install --reinstall '.[anthropic]'
 ```
@@ -120,6 +123,34 @@ Every summarization run, successful or not, is recorded in a local SQLite databa
 Each row holds the timestamp (UTC), video ID, title, topic, model, input/output/cache tokens, number of requests, estimated cost in USD, model call duration, transcript and summary length, status (`ok` / `error`) with the error message, and the ytsum version. If the database can't be written, a warning is printed and the run carries on.
 
 Costs are estimated from the price table in `src/youtube_summarizer/pricing.py` (Anthropic models). A model missing from that table is logged with no cost; add it there to get estimates.
+
+### Tracing a run (optional)
+
+To inspect one run in depth (exact prompt and response, time per step, token counts, errors), send an OpenTelemetry trace to a local [Arize Phoenix](https://github.com/Arize-ai/phoenix). Tracing is off unless you ask for it. Traces contain the full transcript, prompt and summary, and by default they only go to `localhost`.
+
+```bash
+# 1. Install ytsum with the [trace] extra
+uv tool install --reinstall '.[anthropic,trace]'
+
+# 2. Start Phoenix on localhost only (either one), then open http://localhost:6006
+docker run -p 127.0.0.1:6006:6006 arizephoenix/phoenix
+# or: pip install arize-phoenix && PHOENIX_HOST=127.0.0.1 phoenix serve
+
+# 3. Run with --trace (or set YTSUM_TRACE=1)
+youtube-summarizer "VIDEO_URL" --summarize --trace
+```
+
+In Phoenix, open the `ytsum` project: each run is one trace, `ytsum run`, with a `transcript fetch` span and the model call (prompt, response, token counts) underneath.
+
+| Variable | Effect |
+|---|---|
+| `YTSUM_TRACE=1` | Same as `--trace` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Send to another OTLP/HTTP collector (`/v1/traces` is appended) |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full traces URL, used as is |
+
+Phoenix has no login by default: binding it to `127.0.0.1` as above keeps other machines on your network from reading your traces. If `OTEL_EXPORTER_OTLP_ENDPOINT` is already set in your shell for another tool, `--trace` sends the full trace there instead; unset it (or set `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:6006/v1/traces`) to keep traces local.
+
+If no collector is listening, ytsum prints a warning and runs without tracing. Without the `[trace]` extra, `--trace` exits with an install hint.
 
 
 ## Usage
@@ -242,6 +273,7 @@ ytsum/
 │       ├── exporter.py      # Markdown note generation and file export
 │       ├── pricing.py       # Per-model token prices and cost estimates
 │       ├── runlog.py        # SQLite run log and --stats output
+│       ├── tracing.py       # Opt-in OpenTelemetry tracing (--trace)
 │       └── cli.py           # CLI entry point
 └── tests/
     ├── __init__.py
@@ -250,7 +282,8 @@ ytsum/
     ├── test_summarizer.py   # Tests for summarizer module
     ├── test_exporter.py     # Tests for exporter module
     ├── test_pricing.py      # Tests for pricing module
-    └── test_runlog.py       # Tests for runlog module
+    ├── test_runlog.py       # Tests for runlog module
+    └── test_tracing.py      # Tests for tracing module and --trace
 ```
 
 

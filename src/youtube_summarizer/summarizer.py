@@ -65,6 +65,9 @@ def summarize_run(
             "Install it with: pip install 'youtube-summarizer[anthropic]'"
         )
 
+    import pydantic_ai
+    pydantic_ai.BANNER_ENABLED = False  # pydantic-ai 2.x prints an observability ad on every run
+
     agent = Agent(model, instructions=system_prompt)
     started = time.monotonic()
     result = agent.run_sync(
