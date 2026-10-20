@@ -10,8 +10,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-anthropic = ["anthropic>=0.40.0"]
-openai = ["openai>=1.0.0"]
+anthropic = ["pydantic-ai-slim[anthropic]"]
+openai = ["pydantic-ai-slim[openai]"]
 gemini = ["google-generativeai>=0.8.0"]
 dev = [
     "pytest>=8.0.0",
