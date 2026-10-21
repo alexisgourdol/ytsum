@@ -27,8 +27,8 @@ def test_first_run_window():
     assert state.videos["new"].status == "pending"
 
 
-def test_register_new_ignores_known_and_has_no_window_after_first_run():
-    state = State(first_run_done=True)
+def test_register_new_ignores_known_and_has_no_window_for_seen_channels():
+    state = State(first_run_done=True, seen_channels=["UC1"])
     sel.register_new(state, [_entry("a", days_ago=5)], NOW, Config())
     state.videos["a"].status = "done"
     added = sel.register_new(state, [_entry("a", days_ago=5), _entry("b", days_ago=5)], NOW, Config())
@@ -60,7 +60,7 @@ def test_carry_over():
 
 
 def test_drop_after_14_days():
-    state = State(first_run_done=True)
+    state = State(first_run_done=True, seen_channels=["UC1"])
     sel.register_new(state, [_entry("stale", days_ago=15), _entry("fresh", days_ago=2)], NOW, Config())
     dropped = sel.drop_expired(state, NOW, Config())
     assert [r.video_id for r in dropped] == ["stale"]
@@ -79,3 +79,15 @@ def test_retry_then_give_up():
         sel.record_failure(rec, "no captions", cfg)
     assert rec.status == "given_up" and rec.attempts == 3 and rec.reason == "no captions"
     assert sel.pick(state, cfg) == []
+
+
+def test_window_applies_to_a_channel_seen_for_the_first_time_later():
+    """A channel added after the first run (monthly refresh, channels add) doesn't flood the digest."""
+    state = State(first_run_done=True, seen_channels=["UC1"])
+    added = sel.register_new(state, [_entry("old-new-channel", channel="UCnew", days_ago=40),
+                                     _entry("fresh-new-channel", channel="UCnew", days_ago=1),
+                                     _entry("old-known-channel", channel="UC1", days_ago=5)], NOW, Config())
+    assert sorted(r.video_id for r in added) == ["fresh-new-channel", "old-known-channel"]
+    assert state.videos["old-new-channel"].status == "skipped"
+    assert "UCnew" in state.seen_channels
+    assert sel.drop_expired(state, NOW, Config()) == []  # skipped, not dumped into "Dropped"

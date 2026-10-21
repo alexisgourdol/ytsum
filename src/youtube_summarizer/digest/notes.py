@@ -77,13 +77,15 @@ def is_true(value: str) -> bool:
 
 def note_paths(vault_dir: Path, day: date, title: str, video_id: str, topic: str = "LLM") -> tuple[Path, Path, Path]:
     """(short note, transcript, deep dive) paths; a different video with the same title gets its ID appended."""
-    name = sanitize_filename(title)
+    # Obsidian wikilinks break on [ ] # ^ |, so the digest's own names drop them.
+    name = re.sub(r"[\[\]#^|]", "", sanitize_filename(title)).strip()
+    name = re.sub(r"\s{2,}", " ", name)
     if not re.search(r"\w", name):
         name = video_id
     base = f"{day.isoformat()} {topic} - {name}"
     short = vault_dir / f"{base}.md"
     if short.exists() and read_frontmatter(short).get("video_id") != video_id:
-        base = f"{base} [{video_id}]"
+        base = f"{base} ({video_id})"
         short = vault_dir / f"{base}.md"
     return short, vault_dir / f"{base}{SUFFIX_TRANSCRIPT}.md", vault_dir / f"{base}{SUFFIX_DEEP_DIVE}.md"
 
@@ -126,14 +128,24 @@ def parse_deep_dive_verdict(markdown: str) -> bool:
     return bool(words) and words[0].lower() == "yes"
 
 
-def find_deep_dive_requests(vault_dir: Path, cap: int) -> list[Path]:
-    """Digest notes waiting for a deep dive: ticked by the reader first, then model-suggested; newest first."""
+def deep_dive_attempts(fm: dict[str, str]) -> int:
+    try:
+        return int(fm.get("deep_dive_attempts", "0") or 0)
+    except ValueError:
+        return 0
+
+
+def find_deep_dive_requests(vault_dir: Path, cap: int, max_attempts: int = 3) -> list[Path]:
+    """
+    Digest notes waiting for a deep dive: ticked by the reader first, then model-suggested; newest first.
+    Notes whose deep dive already failed max_attempts times are left out.
+    """
     flagged, suggested = [], []
     for path in vault_dir.glob("*.md"):
         if path.stem.endswith((SUFFIX_TRANSCRIPT, SUFFIX_DEEP_DIVE)):
             continue
         fm = read_frontmatter(path)
-        if "digest_date" not in fm or fm.get("deep_dive_note", ""):
+        if "digest_date" not in fm or fm.get("deep_dive_note", "") or deep_dive_attempts(fm) >= max_attempts:
             continue
         key = (fm["digest_date"], path.name)
         if is_true(fm.get("deep_dive", "")):

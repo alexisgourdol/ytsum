@@ -141,20 +141,22 @@ def maybe_refresh(cfg: Config, state: State, now: datetime, api_key: str) -> lis
     except (youtube.YouTubeApiError, judge.JudgeError, llm.LlmError) as e:
         return [f"Channel refresh failed, retried next run: {e}"]
 
-    keep = [c for c in chs if c.bucket != "discovery" or c.pinned]
-    removed = [c for c in chs if c.bucket == "discovery" and not c.pinned]
-    free = max(DISCOVERY_SLOTS - sum(1 for c in keep if c.bucket == "discovery"), 0)
+    replaceable = [c for c in chs if c.bucket == "discovery" and not c.pinned]
+    pinned_discovery = sum(1 for c in chs if c.bucket == "discovery" and c.pinned)
+    free = max(DISCOVERY_SLOTS - pinned_discovery, 0)
     added = [Channel(cid, name, "discovery") for cid, name, _, _ in ranked[:free]]
+    # Replace only as many as there are newcomers; the rest stay (oldest listed are replaced first).
+    open_slots = max(free - len(replaceable), 0)
+    removed = replaceable[:max(len(added) - open_slots, 0)]
     stats = {cid: (n, avg) for cid, _, n, avg in ranked}
 
-    added_ids = {c.channel_id for c in added}
     lines = []
     for c in added:
         n, avg = stats[c.channel_id]
         lines.append(f"+ {c.name} (discovery): {n} on-topic videos in 60 days, {avg:,} average views")
     for c in removed:
-        if c.channel_id not in added_ids:
-            lines.append(f"− {c.name} (discovery): replaced by the monthly refresh")
-    save_channels(keep + added)
+        lines.append(f"− {c.name} (discovery): replaced by the monthly refresh")
+    removed_ids = {c.channel_id for c in removed}
+    save_channels([c for c in chs if c.channel_id not in removed_ids] + added)
     state.last_refresh = now.date().isoformat()
     return lines + stale

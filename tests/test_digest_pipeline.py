@@ -56,6 +56,7 @@ def world(tmp_path, monkeypatch, mocker):
                                        side_effect=lambda ids, api_key: {i: meta[i] for i in ids if i in meta})
     m.download = mocker.patch.object(pipeline, "download_transcript", side_effect=lambda vid: f"transcript of {vid}")
     m.complete = mocker.patch.object(pipeline.llm, "complete", side_effect=fake_complete)
+    m.refresh = mocker.patch.object(pipeline.channels, "maybe_refresh", return_value=[])
     m.cfg, m.vault, m.feeds = cfg, vault, feeds
     return m
 
@@ -211,3 +212,27 @@ def test_cli_runs_pipeline_and_reports_fatal(world, monkeypatch, mocker, capsys)
     assert cli.main(["--once-per-day"]) == 1
     assert cli.main(["--once-per-day"]) == 0  # second run today is skipped
     assert "skipped" in capsys.readouterr().out
+
+
+def test_unavailable_video_is_listed(world):
+    world.fetch_meta.side_effect = lambda ids, api_key: {i: VideoMeta(i, 1500, False, 1) for i in ids if i != "bbbbbbbbbb1"}
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert "Video bbbbbbbbbb1" in _digest(world) and "not available" in _digest(world)
+
+
+def test_deep_dive_failure_counts_attempts_then_gives_up(world):
+    note = world.vault / "2026-10-19 LLM - Old.md"
+    note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n')
+    # no transcript file next to it: every attempt fails
+    for _ in range(3):
+        pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert read_frontmatter(note)["deep_dive_attempts"] == "3"
+    assert "Given up" in _digest(world)
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert read_frontmatter(note)["deep_dive_attempts"] == "3"  # no longer retried
+
+
+def test_hook_update_failure_is_reported(world, monkeypatch):
+    monkeypatch.setenv("YTSUM_DIGEST_UPDATE_FAILED", "could not update .digest-main")
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert "could not update .digest-main" in _digest(world)

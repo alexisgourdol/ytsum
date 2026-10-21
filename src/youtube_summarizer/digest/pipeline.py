@@ -79,7 +79,8 @@ class _Run:
         for rec in todo:
             m = meta.get(rec.video_id)
             if m is None:
-                rec.status, rec.reason = "skipped", "not available"
+                rec.status, rec.reason = "skipped", "not available (private, deleted or members-only)"
+                self.report.skipped.append(f"{_label(rec)}: {rec.reason}")
                 continue
             rec.duration_s = m.duration_s
             reason = youtube.skip_reason(m, self.cfg.shorts_max_seconds)
@@ -145,9 +146,18 @@ class _Run:
             if rec.judged:
                 self.report.carried_over.append(_label(rec))
 
+    def deep_dive_failed(self, note: Path, reason: str) -> None:
+        attempts = notes.deep_dive_attempts(notes.read_frontmatter(note)) + 1
+        notes.set_frontmatter(note, "deep_dive_attempts", str(attempts))
+        if attempts >= self.cfg.max_attempts:
+            self.report.given_up.append(f"Deep dive for [[{note.stem}]]: {reason}")
+        else:
+            self.report.failures.append(
+                f"Deep dive for [[{note.stem}]]: {reason} (attempt {attempts}/{self.cfg.max_attempts})")
+
     def deep_dives(self) -> None:
         cfg = self.cfg
-        requests = notes.find_deep_dive_requests(cfg.vault_dir, cfg.deep_dive_cap)
+        requests = notes.find_deep_dive_requests(cfg.vault_dir, cfg.deep_dive_cap, cfg.max_attempts)
         if not requests:
             return
         try:
@@ -159,7 +169,7 @@ class _Run:
             transcript_path = note.with_name(note.stem + notes.SUFFIX_TRANSCRIPT + ".md")
             deep_path = note.with_name(note.stem + notes.SUFFIX_DEEP_DIVE + ".md")
             if not transcript_path.exists():
-                self.report.failures.append(f"Deep dive for [[{note.stem}]]: no saved transcript")
+                self.deep_dive_failed(note, "no saved transcript")
                 continue
             transcript = transcript_path.read_text().removeprefix("## Transcript").strip()
             fm = notes.read_frontmatter(note)
@@ -167,7 +177,7 @@ class _Run:
                 r = llm.complete(system, transcript, model=cfg.deep_dive_model, mode=cfg.mode,
                                  kind="deep_dive", video_id=fm.get("video_id"), title=note.stem)
             except llm.LlmError as e:
-                self.report.failures.append(f"Deep dive for [[{note.stem}]]: {e}")
+                self.deep_dive_failed(note, str(e))
                 continue
             deep_path.write_text(r.text.strip() + "\n")
             notes.set_frontmatter(note, "deep_dive_note", f'"[[{deep_path.stem}]]"')
@@ -218,6 +228,9 @@ def _run_locked(cfg: Config, now: datetime) -> DigestReport:
     # Same format as runlog timestamps (UTC), so string comparison is time comparison.
     started_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
     run = _Run(cfg, now)
+    # The session-start hook passes this when it couldn't update the .digest-main worktree.
+    if os.environ.get("YTSUM_DIGEST_UPDATE_FAILED"):
+        run.report.failures.append(f"Running old code: {os.environ['YTSUM_DIGEST_UPDATE_FAILED']}")
     try:
         load_env_file(cfg.env_file)
         api_key = run.check_keys()

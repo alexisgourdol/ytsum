@@ -141,3 +141,21 @@ def test_cli_channels_add_needs_youtube_key(mocker, monkeypatch, capsys):
     mocker.patch.object(cli, "load_config", return_value=Config(env_file=Config().env_file.with_name("none")))
     assert cli.main(["channels", "add", "@x", "--bucket", "news"]) == 1
     assert "YOUTUBE_API_KEY" in capsys.readouterr().out
+
+
+def test_refresh_keeps_discovery_channels_it_cannot_replace(mocker):
+    ch.save_channels([ch.Channel("UCd1", "Disc 1", "discovery"), ch.Channel("UCd2", "Disc 2", "discovery"),
+                      ch.Channel("UCd3", "Disc 3", "discovery")])
+    mocker.patch("youtube_summarizer.digest.youtube.api_get", return_value=_search_reply([("UCnew1", 2)]))
+    mocker.patch("youtube_summarizer.digest.youtube.fetch_video_meta",
+                 side_effect=lambda ids, api_key: {i: VideoMeta(i, 600, False, 100) for i in ids})
+
+    def fake_judge(items, cfg):
+        from youtube_summarizer.digest.judge import Verdict
+        return {e.video_id: Verdict(e.video_id, True, False, "ai") for e, _ in items}
+    mocker.patch("youtube_summarizer.digest.judge.judge", side_effect=fake_judge)
+
+    lines = ch.maybe_refresh(Config(), State(), NOW, "k")
+    ids = [c.channel_id for c in ch.load_channels()]
+    assert len(ids) == 3 and "UCnew1" in ids
+    assert sum(1 for l in lines if l.startswith("−")) == 1

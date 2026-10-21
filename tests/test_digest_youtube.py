@@ -73,3 +73,23 @@ def test_api_get_reports_api_error(mocker):
     mocker.patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("u", 403, "Forbidden", {}, body))
     with pytest.raises(yt.YouTubeApiError, match="quotaExceeded"):
         yt.api_get("videos", {"id": "x"}, api_key="k")
+
+
+@pytest.mark.parametrize("exc", [ConnectionResetError("reset"), __import__("http.client").client.RemoteDisconnected("gone"),
+                                 UnicodeDecodeError("utf-8", b"x", 0, 1, "bad")])
+def test_fetch_feed_wraps_connection_errors(mocker, exc):
+    mocker.patch("urllib.request.urlopen", side_effect=exc)
+    with pytest.raises(yt.FeedError):
+        yt.fetch_feed("UCx")
+
+
+def test_api_get_wraps_connection_and_bad_json(mocker):
+    import io
+    mocker.patch("urllib.request.urlopen", side_effect=ConnectionResetError("reset"))
+    with pytest.raises(yt.YouTubeApiError, match="reset"):
+        yt.api_get("videos", {}, api_key="k")
+    html = mocker.MagicMock()
+    html.__enter__.return_value = io.BytesIO(b"<html>oops</html>")
+    mocker.patch("urllib.request.urlopen", return_value=html)
+    with pytest.raises(yt.YouTubeApiError):
+        yt.api_get("videos", {}, api_key="k")

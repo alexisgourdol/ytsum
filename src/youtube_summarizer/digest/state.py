@@ -33,6 +33,8 @@ class State:
     videos: dict[str, VideoRecord] = field(default_factory=dict)
     first_run_done: bool = False
     last_refresh: str = ""
+    # Channels whose feed was read at least once; a channel's first read only takes recent videos.
+    seen_channels: list[str] = field(default_factory=list)
 
 
 def load_state() -> State:
@@ -42,7 +44,7 @@ def load_state() -> State:
     raw = json.loads(path.read_text())
     videos = {vid: VideoRecord(**rec) for vid, rec in raw.get("videos", {}).items()}
     return State(videos=videos, first_run_done=raw.get("first_run_done", False),
-                 last_refresh=raw.get("last_refresh", ""))
+                 last_refresh=raw.get("last_refresh", ""), seen_channels=raw.get("seen_channels", []))
 
 
 def save_state(state: State) -> None:

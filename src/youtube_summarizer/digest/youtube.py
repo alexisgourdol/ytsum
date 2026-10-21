@@ -1,5 +1,6 @@
 """YouTube access without an LLM: channel RSS feeds and the Data API (v3)."""
 
+import http.client
 import json
 import re
 import urllib.error
@@ -66,7 +67,8 @@ def fetch_feed(channel_id: str) -> list[FeedEntry]:
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT_S) as r:
             return parse_feed(r.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, ET.ParseError) as e:
+    except (OSError, http.client.HTTPException, ValueError, ET.ParseError) as e:
+        # OSError covers URLError, timeouts and connection resets; ValueError covers bad UTF-8.
         raise FeedError(f"feed for {channel_id}: {e}") from e
 
 
@@ -93,7 +95,8 @@ def api_get(path: str, params: dict, api_key: str) -> dict:
         except Exception:
             pass
         raise YouTubeApiError(f"{path}: HTTP {e.code}: {message}") from e
-    except (urllib.error.URLError, TimeoutError) as e:
+    except (OSError, http.client.HTTPException, ValueError) as e:
+        # Connection resets, timeouts, and non-JSON replies (ValueError includes JSONDecodeError).
         raise YouTubeApiError(f"{path}: {e}") from e
 
 

@@ -31,8 +31,8 @@ def test_note_paths_never_collide(tmp_path):
     again, _, _ = nt.note_paths(tmp_path, DAY, "Same", "AAAAAAAAAAA")
     assert again == first  # same video: same file
     other, other_t, _ = nt.note_paths(tmp_path, DAY, "Same", "BBBBBBBBBBB")
-    assert "[BBBBBBBBBBB]" in other.name and other != first
-    assert "[BBBBBBBBBBB]" in other_t.name
+    assert "(BBBBBBBBBBB)" in other.name and other != first
+    assert "(BBBBBBBBBBB)" in other_t.name
     blank, _, _ = nt.note_paths(tmp_path, DAY, "???", "CCCCCCCCCCC")
     assert "CCCCCCCCCCC" in blank.name
 
@@ -124,3 +124,16 @@ def test_write_digest_appends_second_run(tmp_path):
     p2 = nt.write_digest(tmp_path, DAY, "second")
     text = p2.read_text()
     assert p1 == p2 and text.startswith("first") and "## Run " in text and text.rstrip().endswith("second")
+
+
+def test_note_names_are_wikilink_safe(tmp_path):
+    short, _, _ = nt.note_paths(tmp_path, DAY, "Episode #3 [live] ^ notes", "vid00000001")
+    assert not any(c in short.stem for c in "[]#^|")
+
+
+def test_failed_deep_dives_give_up_after_max_attempts(tmp_path):
+    a = _write_note(tmp_path, "2026-10-21 LLM - a.md", 'digest_date: 2026-10-21\ndeep_dive: true\ndeep_dive_note: ""\ndeep_dive_attempts: 3')
+    b = _write_note(tmp_path, "2026-10-20 LLM - b.md", 'digest_date: 2026-10-20\ndeep_dive: true\ndeep_dive_note: ""\ndeep_dive_attempts: 1')
+    c = _write_note(tmp_path, "2026-10-19 LLM - c.md", 'digest_date: 2026-10-19\ndeep_dive_suggested: true\ndeep_dive_note: ""')
+    found = nt.find_deep_dive_requests(tmp_path, cap=2, max_attempts=3)
+    assert found == [b, c]  # a gave up, so it no longer takes a slot

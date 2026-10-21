@@ -12,18 +12,24 @@ def _published(rec_or_entry) -> datetime:
 
 
 def register_new(state: State, entries: list[FeedEntry], now: datetime, cfg: Config) -> list[VideoRecord]:
-    """Add unseen videos as pending; on the first run, older ones are marked skipped."""
+    """
+    Add unseen videos as pending. The first time a channel's feed is read (first run,
+    or a channel added later), only videos from the last first_run_days are taken;
+    older ones are marked skipped, so a new channel never floods the digest.
+    """
     added = []
     cutoff = now - timedelta(days=cfg.first_run_days)
+    new_channels = {e.channel_id for e in entries} - set(state.seen_channels)
     for e in entries:
         if e.video_id in state.videos:
             continue
         rec = VideoRecord(e.video_id, e.channel_id, e.channel_name, e.title, e.published, "pending")
-        if not state.first_run_done and _published(e) < cutoff:
+        if e.channel_id in new_channels and _published(e) < cutoff:
             rec.status, rec.reason = "skipped", "before first run"
         else:
             added.append(rec)
         state.videos[e.video_id] = rec
+    state.seen_channels.extend(sorted(new_channels))
     return added
 
 
