@@ -13,7 +13,6 @@ TOPIC_DEFINITION = (
     "open-weight models…), agents, coding assistants, reasoning and research trends, "
     "AI engineering and automation."
 )
-TRANSCRIPT_HEAD_CHARS = 4000
 
 SYSTEM_PROMPT = f"""You triage YouTube videos for a daily AI digest.
 
@@ -38,15 +37,15 @@ class Verdict:
     reason: str
 
 
-def build_judge_prompt(items: list[tuple[FeedEntry, str]]) -> tuple[str, str]:
+def build_judge_prompt(entries: list[FeedEntry]) -> tuple[str, str]:
+    """Judged from title and description only: no transcript is downloaded before a video is picked."""
     blocks = []
-    for entry, transcript in items:
+    for entry in entries:
         blocks.append(
             f"### video_id: {entry.video_id}\n"
             f"Title: {entry.title}\n"
             f"Channel: {entry.channel_name}\n"
-            f"Description: {entry.description}\n"
-            f"Transcript (start): {transcript[:TRANSCRIPT_HEAD_CHARS]}"
+            f"Description: {entry.description}"
         )
     return SYSTEM_PROMPT, "\n\n".join(blocks)
 
@@ -74,9 +73,9 @@ def parse_verdicts(text: str, expected_ids: set[str]) -> dict[str, Verdict]:
     return verdicts
 
 
-def judge(items: list[tuple[FeedEntry, str]], cfg: Config) -> dict[str, Verdict]:
-    if not items:
+def judge(entries: list[FeedEntry], cfg: Config) -> dict[str, Verdict]:
+    if not entries:
         return {}
-    system, user = build_judge_prompt(items)
+    system, user = build_judge_prompt(entries)
     r = llm.complete(system, user, model=cfg.judge_model, mode=cfg.mode, kind="judge")
-    return parse_verdicts(r.text, {e.video_id for e, _ in items})
+    return parse_verdicts(r.text, {e.video_id for e in entries})

@@ -95,7 +95,8 @@ def test_one_failure_does_not_stop_the_run(world):
 
     digest = _digest(world)
     assert "404" in digest and "no captions" in digest
-    assert any("aaaaaaaaaa3" in p.name for p in world.vault.iterdir())
+    # a picked video whose transcript fails keeps its slot (no backfill: fewer requests while YouTube blocks)
+    assert any("aaaaaaaaaa2" in p.name for p in world.vault.iterdir())
     assert st.load_state().videos["aaaaaaaaaa1"].status == "failed"
 
 
@@ -236,3 +237,40 @@ def test_hook_update_failure_is_reported(world, monkeypatch):
     monkeypatch.setenv("YTSUM_DIGEST_UPDATE_FAILED", "could not update .digest-main")
     pipeline.run_digest(world.cfg, NOW, once_per_day=False)
     assert "could not update .digest-main" in _digest(world)
+
+
+def test_transcripts_only_for_picked_videos(world):
+    from dataclasses import replace
+    world.feeds["UCa"] += [_entry(f"aaaaaaaaab{i}", "UCa", 1 + i * 0.1) for i in range(4)]
+    world.fetch_meta.side_effect = lambda ids, api_key: {i: VideoMeta(i, 1500, False, 1) for i in ids}
+    pipeline.run_digest(replace(world.cfg, daily_cap=2), NOW, once_per_day=False)
+    downloaded = [c.args[0] for c in world.download.call_args_list]
+    summarized = [c.kwargs["video_id"] for c in world.complete.call_args_list if c.kwargs["kind"] == "summary"]
+    assert sorted(downloaded) == sorted(summarized) and len(downloaded) == 2
+    judge_prompt = next(c.args[1] for c in world.complete.call_args_list if c.kwargs["kind"] == "judge")
+    assert "transcript of" not in judge_prompt
+
+
+LIBRARY_ERROR = (
+    "Error downloading transcript for _UetnlytnJ4: \n"
+    "Could not retrieve a transcript for the video https://www.youtube.com/watch?v=_UetnlytnJ4! "
+    "This is most likely caused by:\n\nSubtitles are disabled for this video\n\n"
+    "If you are sure that the described cause is not responsible for this error ..."
+)
+
+
+def test_failure_lines_are_one_line(world):
+    world.download.side_effect = lambda vid: (_ for _ in ()).throw(TranscriptError(LIBRARY_ERROR))
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    failures = _digest(world).split("## Failures")[1].split("\n## ")[0]
+    lines = [l for l in failures.splitlines() if l.strip()][1:]  # drop the heading's tail
+    assert lines and all(l.startswith("- ") for l in lines)
+    assert "Subtitles are disabled for this video" in failures
+    assert "If you are sure" not in failures
+
+
+def test_short_reason():
+    assert pipeline.short_reason(LIBRARY_ERROR) == (
+        "Error downloading transcript for _UetnlytnJ4: Subtitles are disabled for this video")
+    assert pipeline.short_reason("plain error") == "plain error"
+    assert len(pipeline.short_reason("x" * 500)) <= 200
