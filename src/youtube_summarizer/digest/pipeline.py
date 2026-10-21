@@ -12,6 +12,7 @@ from youtube_summarizer import runlog
 from youtube_summarizer.downloader import TranscriptError, download_transcript
 from youtube_summarizer.digest import channels, judge, llm, notes, select, state as st, youtube
 from youtube_summarizer.digest.config import Config, data_dir, load_env_file
+from youtube_summarizer.digest.errors import short_reason
 from youtube_summarizer.digest.notes import DigestReport
 
 log = logging.getLogger("ytsum.digest")
@@ -19,25 +20,6 @@ log = logging.getLogger("ytsum.digest")
 
 class FatalError(Exception):
     """The run cannot go on (missing key, no channels); reported at the top of the digest."""
-
-
-MAX_REASON_CHARS = 200
-
-
-def short_reason(message: str) -> str:
-    """
-    One line for the digest note. youtube-transcript-api errors span many lines; their
-    cause is the line after "This is most likely caused by:".
-    """
-    lines = [l.strip() for l in str(message).splitlines() if l.strip()]
-    if not lines:
-        return ""
-    reason = lines[0].rstrip(": ")
-    for i, line in enumerate(lines[:-1]):
-        if line.endswith("caused by:"):
-            reason = f"{reason}: {lines[i + 1]}"
-            break
-    return reason if len(reason) <= MAX_REASON_CHARS else reason[:MAX_REASON_CHARS - 1] + "…"
 
 
 def _label(rec: st.VideoRecord) -> str:

@@ -176,3 +176,26 @@ def test_discovery_needs_mostly_on_topic_uploads(refresh_world, mocker):
     ids = {c.channel_id for c in ch.load_channels()}
     assert "UCnew2" not in ids  # highest views, but only 20% on topic
     assert "UCnew1" in ids
+
+
+def test_refresh_judges_candidate_feeds_in_one_call(refresh_world, mocker):
+    from youtube_summarizer.digest import judge as jd
+    ch.maybe_refresh(Config(), State(), NOW, "k")
+    assert jd.judge.call_count == 2  # search results once, candidates' recent uploads once
+
+
+def test_refresh_failure_line_is_one_line(mocker):
+    from youtube_summarizer.digest.youtube import YouTubeApiError
+    ch.save_channels([ch.Channel("UCvault", "Vault", "vault")])
+    mocker.patch("youtube_summarizer.digest.youtube.api_get", side_effect=YouTubeApiError("quota\nexceeded\ndetails"))
+    lines = ch.maybe_refresh(Config(), State(), NOW, "k")
+    assert lines and all("\n" not in l for l in lines)
+
+
+def test_refresh_fails_when_no_candidate_feed_is_readable(refresh_world, mocker):
+    from youtube_summarizer.digest.youtube import FeedError
+    mocker.patch("youtube_summarizer.digest.youtube.fetch_feed", side_effect=FeedError("blocked"))
+    state = State()
+    lines = ch.maybe_refresh(Config(), state, NOW, "k")
+    assert any("Channel refresh failed" in l for l in lines)
+    assert state.last_refresh == ""  # retried next run

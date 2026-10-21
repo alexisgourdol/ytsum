@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from youtube_summarizer.digest import judge, llm, youtube
 from youtube_summarizer.digest.config import Config, data_dir
+from youtube_summarizer.digest.errors import short_reason
 from youtube_summarizer.digest.state import State
 
 BUCKETS = ("vault", "news", "labs", "discovery")
@@ -89,6 +90,8 @@ def _mostly_on_topic(channel_ids: list[str], cfg: Config) -> set[str]:
             feeds[cid] = youtube.fetch_feed(cid)
         except youtube.FeedError:
             continue  # can't check it, so it doesn't qualify
+    if channel_ids and not feeds:
+        raise youtube.FeedError("could not read any candidate channel's feed")
     entries = [e for feed in feeds.values() for e in feed]
     verdicts = judge.judge(entries, cfg)
     passing = set()
@@ -120,7 +123,9 @@ def _discover(listed: set[str], cfg: Config, now: datetime, api_key: str) -> lis
         if v.on_topic and not v.fully_sponsored:
             on_topic.setdefault(videos[vid].channel_id, []).append(vid)
     qualified = {cid: vids for cid, vids in on_topic.items() if len(vids) >= MIN_ON_TOPIC_VIDEOS}
-    qualified = {cid: vids for cid, vids in qualified.items() if cid in _mostly_on_topic(list(qualified), cfg)}
+    if qualified:
+        passing = _mostly_on_topic(list(qualified), cfg)  # once: one judge call for all candidates
+        qualified = {cid: vids for cid, vids in qualified.items() if cid in passing}
     if not qualified:
         return []
     meta = youtube.fetch_video_meta([v for vids in qualified.values() for v in vids], api_key)
@@ -160,8 +165,8 @@ def maybe_refresh(cfg: Config, state: State, now: datetime, api_key: str) -> lis
     try:
         ranked = _discover({c.channel_id for c in chs}, cfg, now, api_key)
         stale = _stale_lines(chs, now)
-    except (youtube.YouTubeApiError, judge.JudgeError, llm.LlmError) as e:
-        return [f"Channel refresh failed, retried next run: {e}"]
+    except (youtube.YouTubeApiError, youtube.FeedError, judge.JudgeError, llm.LlmError) as e:
+        return [f"Channel refresh failed, retried next run: {short_reason(e)}"]
 
     replaceable = [c for c in chs if c.bucket == "discovery" and not c.pinned]
     pinned_discovery = sum(1 for c in chs if c.bucket == "discovery" and c.pinned)
