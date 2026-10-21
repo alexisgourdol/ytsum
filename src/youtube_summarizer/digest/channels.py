@@ -14,6 +14,7 @@ DISCOVERY_SLOTS = 3
 DISCOVERY_QUERIES = ["new AI model release", "AI agents", "Claude Code", "OpenAI Codex", "LLM reasoning"]
 DISCOVERY_WINDOW_DAYS = 60
 MIN_ON_TOPIC_VIDEOS = 2
+MIN_ON_TOPIC_SHARE = 0.5  # of a candidate's latest uploads (its RSS feed, up to 15)
 STALE_DAYS = 90
 
 
@@ -80,6 +81,26 @@ def _due(state: State, now: datetime, cfg: Config) -> bool:
     return (now.date() - date.fromisoformat(state.last_refresh)).days >= cfg.refresh_days
 
 
+def _mostly_on_topic(channel_ids: list[str], cfg: Config) -> set[str]:
+    """Channels whose latest uploads are at least MIN_ON_TOPIC_SHARE on topic (one judge call for all)."""
+    feeds = {}
+    for cid in channel_ids:
+        try:
+            feeds[cid] = youtube.fetch_feed(cid)
+        except youtube.FeedError:
+            continue  # can't check it, so it doesn't qualify
+    entries = [e for feed in feeds.values() for e in feed]
+    verdicts = judge.judge(entries, cfg)
+    passing = set()
+    for cid, feed in feeds.items():
+        if not feed:
+            continue
+        on = sum(1 for e in feed if e.video_id in verdicts and verdicts[e.video_id].on_topic)
+        if on / len(feed) >= MIN_ON_TOPIC_SHARE:
+            passing.add(cid)
+    return passing
+
+
 def _discover(listed: set[str], cfg: Config, now: datetime, api_key: str) -> list[tuple[str, str, int, int]]:
     """(channel_id, name, on-topic videos, average views) for new candidate channels, best first."""
     after = (now - timedelta(days=DISCOVERY_WINDOW_DAYS)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -93,12 +114,13 @@ def _discover(listed: set[str], cfg: Config, now: datetime, api_key: str) -> lis
                 continue
             videos[vid] = youtube.FeedEntry(vid, sn["channelId"], sn["channelTitle"], sn["title"],
                                             sn.get("publishedAt", ""), sn.get("description", ""))
-    verdicts = judge.judge([(e, "") for e in videos.values()], cfg)
+    verdicts = judge.judge(list(videos.values()), cfg)
     on_topic: dict[str, list[str]] = {}
     for vid, v in verdicts.items():
         if v.on_topic and not v.fully_sponsored:
             on_topic.setdefault(videos[vid].channel_id, []).append(vid)
     qualified = {cid: vids for cid, vids in on_topic.items() if len(vids) >= MIN_ON_TOPIC_VIDEOS}
+    qualified = {cid: vids for cid, vids in qualified.items() if cid in _mostly_on_topic(list(qualified), cfg)}
     if not qualified:
         return []
     meta = youtube.fetch_video_meta([v for vids in qualified.values() for v in vids], api_key)

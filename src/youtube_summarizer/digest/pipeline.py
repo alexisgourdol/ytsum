@@ -21,6 +21,25 @@ class FatalError(Exception):
     """The run cannot go on (missing key, no channels); reported at the top of the digest."""
 
 
+MAX_REASON_CHARS = 200
+
+
+def short_reason(message: str) -> str:
+    """
+    One line for the digest note. youtube-transcript-api errors span many lines; their
+    cause is the line after "This is most likely caused by:".
+    """
+    lines = [l.strip() for l in str(message).splitlines() if l.strip()]
+    if not lines:
+        return ""
+    reason = lines[0].rstrip(": ")
+    for i, line in enumerate(lines[:-1]):
+        if line.endswith("caused by:"):
+            reason = f"{reason}: {lines[i + 1]}"
+            break
+    return reason if len(reason) <= MAX_REASON_CHARS else reason[:MAX_REASON_CHARS - 1] + "…"
+
+
 def _label(rec: st.VideoRecord) -> str:
     return f"{rec.title} · {rec.channel_name}"
 
@@ -38,6 +57,7 @@ class _Run:
         self.transcripts: dict[str, str] = {}
 
     def fail(self, rec: st.VideoRecord, reason: str) -> None:
+        reason = short_reason(reason)
         select.record_failure(rec, reason, self.cfg)
         if rec.status == "given_up":
             self.report.given_up.append(f"{_label(rec)}: {reason} ({_url(rec.video_id)})")
@@ -57,7 +77,7 @@ class _Run:
             try:
                 feed = youtube.fetch_feed(c.channel_id)
             except youtube.FeedError as e:
-                self.report.failures.append(f"{c.name}: {e}")
+                self.report.failures.append(f"{c.name}: {short_reason(e)}")
                 continue
             for e in feed:
                 self.entries[e.video_id] = e
@@ -66,14 +86,14 @@ class _Run:
             self.report.dropped.append(f"{_label(rec)} ({_url(rec.video_id)})")
 
     def triage(self, api_key: str) -> None:
-        """Metadata filter, transcripts and the judge, for waiting videos not judged yet."""
+        """Metadata filter and the judge, for waiting videos not judged yet (no transcripts here)."""
         todo = [r for r in select.eligible(self.state, self.cfg) if not r.judged]
         if not todo:
             return
         try:
             meta = youtube.fetch_video_meta([r.video_id for r in todo], api_key)
         except youtube.YouTubeApiError as e:
-            self.report.failures.append(f"YouTube Data API: {e} (videos wait for the next run)")
+            self.report.failures.append(f"YouTube Data API: {short_reason(e)} (videos wait for the next run)")
             return
         items = []
         for rec in todo:
@@ -88,16 +108,12 @@ class _Run:
                 rec.status, rec.reason = "skipped", reason
                 self.report.skipped.append(f"{_label(rec)}: {reason}")
                 continue
-            transcript = self.transcript(rec)
-            if transcript is None:
-                continue
-            entry = self.entries.get(rec.video_id) or youtube.FeedEntry(
-                rec.video_id, rec.channel_id, rec.channel_name, rec.title, rec.published, "")
-            items.append((entry, transcript))
+            items.append(self.entries.get(rec.video_id) or youtube.FeedEntry(
+                rec.video_id, rec.channel_id, rec.channel_name, rec.title, rec.published, ""))
         try:
             verdicts = judge.judge(items, self.cfg)
         except (judge.JudgeError, llm.LlmError) as e:
-            for entry, _ in items:
+            for entry in items:
                 self.fail(self.state.videos[entry.video_id], f"judge failed: {e}")
             return
         for vid, v in verdicts.items():
@@ -147,6 +163,7 @@ class _Run:
                 self.report.carried_over.append(_label(rec))
 
     def deep_dive_failed(self, note: Path, reason: str) -> None:
+        reason = short_reason(reason)
         attempts = notes.deep_dive_attempts(notes.read_frontmatter(note)) + 1
         notes.set_frontmatter(note, "deep_dive_attempts", str(attempts))
         if attempts >= self.cfg.max_attempts:
@@ -163,7 +180,7 @@ class _Run:
         try:
             system = notes.deep_dive_prompt(cfg.skill_path.read_text())
         except OSError as e:
-            self.report.failures.append(f"Deep dives: cannot read {cfg.skill_path}: {e}")
+            self.report.failures.append(f"Deep dives: cannot read {cfg.skill_path}: {short_reason(e)}")
             return
         for note in requests:
             transcript_path = note.with_name(note.stem + notes.SUFFIX_TRANSCRIPT + ".md")
@@ -248,7 +265,7 @@ def _run_locked(cfg: Config, now: datetime) -> DigestReport:
         run.report.fatal = str(e)
         log.error("run failed: %s", e)
     except Exception as e:
-        run.report.fatal = f"{type(e).__name__}: {e}"
+        run.report.fatal = short_reason(f"{type(e).__name__}: {e}")
         log.error("run crashed:\n%s", traceback.format_exc())
     run.report.usage = _usage_since(started_iso)
     path = notes.write_digest(cfg.vault_dir, now.date(), notes.render_digest(run.report, now.date()))

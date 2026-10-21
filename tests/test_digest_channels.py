@@ -81,9 +81,9 @@ def refresh_world(mocker):
     fresh = [FeedEntry("x", "UCvault", "Vault", "t", (NOW - timedelta(days=3)).isoformat(), "")]
     mocker.patch("youtube_summarizer.digest.youtube.fetch_feed", return_value=fresh)
 
-    def fake_judge(items, cfg):
+    def fake_judge(entries, cfg):
         from youtube_summarizer.digest.judge import Verdict
-        return {e.video_id: Verdict(e.video_id, True, False, "ai") for e, _ in items}
+        return {e.video_id: Verdict(e.video_id, "OFF" not in e.title, False, "ai") for e in entries}
     mocker.patch("youtube_summarizer.digest.judge.judge", side_effect=fake_judge)
 
 
@@ -147,15 +147,32 @@ def test_refresh_keeps_discovery_channels_it_cannot_replace(mocker):
     ch.save_channels([ch.Channel("UCd1", "Disc 1", "discovery"), ch.Channel("UCd2", "Disc 2", "discovery"),
                       ch.Channel("UCd3", "Disc 3", "discovery")])
     mocker.patch("youtube_summarizer.digest.youtube.api_get", return_value=_search_reply([("UCnew1", 2)]))
+    mocker.patch("youtube_summarizer.digest.youtube.fetch_feed",
+                 return_value=[FeedEntry("f1", "UCnew1", "Name", "AI news", NOW.isoformat(), "")])
     mocker.patch("youtube_summarizer.digest.youtube.fetch_video_meta",
                  side_effect=lambda ids, api_key: {i: VideoMeta(i, 600, False, 100) for i in ids})
 
-    def fake_judge(items, cfg):
+    def fake_judge(entries, cfg):
         from youtube_summarizer.digest.judge import Verdict
-        return {e.video_id: Verdict(e.video_id, True, False, "ai") for e, _ in items}
+        return {e.video_id: Verdict(e.video_id, True, False, "ai") for e in entries}
     mocker.patch("youtube_summarizer.digest.judge.judge", side_effect=fake_judge)
 
     lines = ch.maybe_refresh(Config(), State(), NOW, "k")
     ids = [c.channel_id for c in ch.load_channels()]
     assert len(ids) == 3 and "UCnew1" in ids
     assert sum(1 for l in lines if l.startswith("−")) == 1
+
+
+def test_discovery_needs_mostly_on_topic_uploads(refresh_world, mocker):
+    """A big general channel with a couple of AI videos (CNN, a talk show) is not a discovery channel."""
+    def feed(cid):
+        if cid == "UCnew2":  # 3 of its last 15 uploads are about AI
+            return [FeedEntry(f"{cid}-f{i}", cid, "Name", "AI news" if i < 3 else "OFF topic", NOW.isoformat(), "")
+                    for i in range(15)]
+        return [FeedEntry(f"{cid}-f{i}", cid, "Name", "AI news", (NOW - timedelta(days=3)).isoformat(), "")
+                for i in range(15)]
+    mocker.patch("youtube_summarizer.digest.youtube.fetch_feed", side_effect=feed)
+    ch.maybe_refresh(Config(), State(), NOW, "k")
+    ids = {c.channel_id for c in ch.load_channels()}
+    assert "UCnew2" not in ids  # highest views, but only 20% on topic
+    assert "UCnew1" in ids

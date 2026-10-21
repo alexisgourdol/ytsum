@@ -14,13 +14,12 @@ def _entry(video_id, title="T", description="D"):
 
 
 def test_prompt_contains_rules():
-    long_transcript = "x" * 5000 + "TAIL_MARKER"
-    system, user = jd.build_judge_prompt([(_entry("v1", "Mistral Large 3 is out", "release notes"), long_transcript)])
+    system, user = jd.build_judge_prompt([_entry("v1", "Mistral Large 3 is out", "release notes")])
     assert jd.TOPIC_DEFINITION in system
     assert "sponsor segment inside a normal video is never a reason to skip" in system
     assert "JSON" in system
     assert "v1" in user and "Mistral Large 3 is out" in user and "release notes" in user
-    assert "x" * 4000 in user and "TAIL_MARKER" not in user
+    assert "Transcript" not in user  # judged from title and description only
 
 
 def test_parse_verdicts_fenced():
@@ -49,7 +48,7 @@ def test_judge_empty_makes_no_call(mocker):
 def test_judge_uses_judge_model_and_mode(mocker):
     reply = json.dumps([{"video_id": "v1", "on_topic": False, "fully_sponsored": False, "reason": "cooking vlog"}])
     complete = mocker.patch("youtube_summarizer.digest.llm.complete", return_value=mocker.MagicMock(text=reply))
-    verdicts = jd.judge([(_entry("v1"), "transcript")], Config(mode="subscription"))
+    verdicts = jd.judge([_entry("v1")], Config(mode="subscription"))
     assert verdicts["v1"].on_topic is False
     kwargs = complete.call_args.kwargs
     assert (kwargs["kind"], kwargs["model"], kwargs["mode"]) == ("judge", "claude-haiku-5-5", "subscription")
