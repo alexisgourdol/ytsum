@@ -63,6 +63,8 @@ __pypackages__/
 # Environments
 .env
 .venv
+.env*.local
+.digest-main/
 env/
 venv/
 ENV/

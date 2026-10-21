@@ -1,0 +1,5 @@
+{"items": [
+ {"id": "aaaaaaaaaaa", "snippet": {"liveBroadcastContent": "none"}, "contentDetails": {"duration": "PT25M10S"}, "statistics": {"viewCount": "12345"}},
+ {"id": "bbbbbbbbbbb", "snippet": {"liveBroadcastContent": "none"}, "contentDetails": {"duration": "PT2M"}, "statistics": {"viewCount": "50"}},
+ {"id": "ccccccccccc", "snippet": {"liveBroadcastContent": "none"}, "contentDetails": {"duration": "PT1H2M3S"}, "statistics": {}, "liveStreamingDetails": {"actualEndTime": "2026-10-18T19:00:00Z"}}
+]}

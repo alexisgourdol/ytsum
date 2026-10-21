@@ -44,13 +44,20 @@ def summarize(
     return summarize_run(transcript, model=model, system_prompt=system_prompt).output
 
 
+DEFAULT_USER_PREFIX = "Please summarize the following YouTube transcript:\n\n"
+
+
 def summarize_run(
     transcript: str,
     model: str = DEFAULT_MODEL,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
+    user_prefix: str | None = None,
 ) -> SummaryResult:
     """
     Like summarize(), but also returns the run's token usage.
+
+    user_prefix: text sent before the transcript; None keeps the default
+                 "Please summarize ..." line, "" sends the transcript as-is.
 
     Returns:
         SummaryResult with the summary, a pydantic-ai RunUsage
@@ -70,9 +77,8 @@ def summarize_run(
 
     agent = Agent(model, instructions=system_prompt)
     started = time.monotonic()
-    result = agent.run_sync(
-        f"Please summarize the following YouTube transcript:\n\n{transcript}"
-    )
+    prefix = DEFAULT_USER_PREFIX if user_prefix is None else user_prefix
+    result = agent.run_sync(f"{prefix}{transcript}")
     duration_s = time.monotonic() - started
     # pydantic-ai 2.x exposes usage as a property; 1.x as a method.
     usage = result.usage() if callable(result.usage) else result.usage

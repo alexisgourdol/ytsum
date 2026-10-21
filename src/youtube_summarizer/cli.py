@@ -138,6 +138,10 @@ Examples:
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "digest":
+        from youtube_summarizer.digest import cli as digest_cli
+        sys.exit(digest_cli.main(sys.argv[2:]))
+
     parser = build_parser()
     args = parser.parse_args()
 

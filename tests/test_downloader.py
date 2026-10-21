@@ -6,6 +6,7 @@ from youtube_summarizer.downloader import (
     format_timestamp,
     format_transcript,
     download_transcript,
+    TranscriptError,
 )
 
 
@@ -225,6 +226,14 @@ class TestDownloadTranscript:
         result = download_transcript('dQw4w9WgXcQ', languages=['fr', 'en'])
         assert "Hello" in result
 
+
+    def test_download_transcript_raises_transcript_error(self, mocker):
+        """A failed download raises TranscriptError (callers decide), not sys.exit"""
+        mock_api_class = mocker.patch('youtube_transcript_api.YouTubeTranscriptApi')
+        mock_api_class.return_value.list.side_effect = Exception("no captions")
+
+        with pytest.raises(TranscriptError, match="no captions"):
+            download_transcript('dQw4w9WgXcQ')
 
 class TestDownloadTranscriptIntegration:
     """Integration tests with real YouTube API (run manually)"""

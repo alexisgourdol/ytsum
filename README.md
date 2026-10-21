@@ -278,6 +278,23 @@ summary = summarize(transcript, model="anthropic:claude-sonnet-5-5",
 ```
 
 
+### Daily digest (`digest`)
+
+`youtube-summarizer digest` checks a list of channels for new videos and writes, into an Obsidian folder, a short note and the transcript for each new on-topic video (max 10 per run, 2 per channel) plus one `YYYY-MM-DD digest.md` note listing them. Shorts, livestreams, off-topic and fully sponsored videos are skipped. Tick `deep_dive: true` on a note and the next run adds a full `video-summary` deep dive from the saved transcript.
+
+```bash
+youtube-summarizer digest channels add https://www.youtube.com/@samwitteveenai --bucket vault [--pin]
+youtube-summarizer digest channels list
+youtube-summarizer digest                    # run now
+youtube-summarizer digest --once-per-day     # what the session-start hook runs
+youtube-summarizer digest --mode subscription  # summarize with `claude -p` on the Claude subscription
+```
+
+- **Keys:** `YOUTUBE_API_KEY` (YouTube Data API v3), and `ANTHROPIC_API_KEY` in `api` mode, from the environment or the `env_file` in `config.toml`.
+- **Settings and state** live in `~/.local/share/ytsum/digest/` (next to the run log): `config.toml` (every key optional: `mode`, models, caps, `vault_dir`, ...), `channels.toml`, `state.json`, `digest.log`.
+- **Modes:** `api` uses pydantic-ai on the Anthropic API; `subscription` runs `claude -p` with no tools and without `ANTHROPIC_API_KEY`, so it bills the Claude plan. Both log every call to the run log (`anthropic:<model>` vs `claude-code:<model>`, with a `kind` of judge / summary / deep_dive), so `--stats` compares them.
+- **Channel refresh:** every 30 days the 3 `discovery` channels are replaced by the best new AI channels from a YouTube search; pinned channels are never removed. Changes are listed in that day's digest note.
+
 ## Development
 
 ### Running Tests

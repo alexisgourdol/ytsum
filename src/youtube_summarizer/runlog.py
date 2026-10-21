@@ -15,7 +15,7 @@ COLUMNS = [
     "timestamp", "video_id", "title", "topic", "model",
     "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "requests",
     "est_cost_usd", "duration_s", "transcript_chars", "summary_chars",
-    "status", "error", "ytsum_version",
+    "status", "error", "ytsum_version", "kind",
 ]
 
 SCHEMA = """
@@ -37,9 +37,18 @@ CREATE TABLE IF NOT EXISTS runs (
     summary_chars      INTEGER,
     status             TEXT NOT NULL,
     error              TEXT,
-    ytsum_version      TEXT
+    ytsum_version      TEXT,
+    kind               TEXT
 )
 """
+
+
+def _ensure_schema(conn: sqlite3.Connection) -> None:
+    """Create the table, and add columns that older run logs don't have yet."""
+    conn.execute(SCHEMA)
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)")}
+    if "kind" not in existing:
+        conn.execute("ALTER TABLE runs ADD COLUMN kind TEXT")
 
 RECENT_RUNS = 10
 
@@ -78,10 +87,10 @@ def record_run(row: dict) -> None:
     path = db_path()
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path, timeout=10)
         try:
             with conn:
-                conn.execute(SCHEMA)
+                _ensure_schema(conn)
                 conn.execute(
                     f"INSERT INTO runs ({', '.join(COLUMNS)}) "
                     f"VALUES ({', '.join(':' + c for c in COLUMNS)})",
@@ -122,12 +131,12 @@ def _table(header: list[str], rows: list[list[str]]) -> list[str]:
 
 
 def _query_stats(path: Path) -> tuple[list, list]:
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=10)
     try:
-        conn.execute(SCHEMA)
+        _ensure_schema(conn)
         by_model = conn.execute(
             """
-            SELECT model,
+            SELECT model, kind,
                    SUM(status = 'ok'), SUM(status = 'error'),
                    AVG(CASE WHEN status = 'ok' THEN input_tokens END),
                    AVG(CASE WHEN status = 'ok' THEN output_tokens END),
@@ -135,11 +144,11 @@ def _query_stats(path: Path) -> tuple[list, list]:
                    SUM(est_cost_usd),
                    AVG(CASE WHEN status = 'ok' THEN duration_s END),
                    MIN(timestamp), MAX(timestamp)
-            FROM runs GROUP BY model ORDER BY MAX(timestamp) DESC
+            FROM runs GROUP BY model, kind ORDER BY MAX(timestamp) DESC
             """
         ).fetchall()
         recent = conn.execute(
-            "SELECT timestamp, model, status, input_tokens, output_tokens, est_cost_usd, "
+            "SELECT timestamp, model, kind, status, input_tokens, output_tokens, est_cost_usd, "
             "duration_s, video_id, title FROM runs ORDER BY id DESC LIMIT ?",
             (RECENT_RUNS,),
         ).fetchall()
@@ -164,20 +173,20 @@ def render_stats(path: Optional[Path] = None) -> str:
 
     lines = [f"Run log: {path}", ""]
     lines += _table(
-        ["model", "runs", "errors", "avg in", "avg out", "avg cost", "total cost", "avg time", "first", "last"],
+        ["model", "runs", "errors", "avg in", "avg out", "avg cost", "total cost", "avg time", "first", "last", "kind"],
         [
             [model, str(ok), str(err), _num(avg_in), _num(avg_out), _cost(avg_cost),
-             _cost(total_cost), _secs(avg_time), first[:10], last[:10]]
-            for model, ok, err, avg_in, avg_out, avg_cost, total_cost, avg_time, first, last in by_model
+             _cost(total_cost), _secs(avg_time), first[:10], last[:10], kind or "-"]
+            for model, kind, ok, err, avg_in, avg_out, avg_cost, total_cost, avg_time, first, last in by_model
         ],
     )
     lines += ["", f"Recent runs (last {RECENT_RUNS}, UTC)"]
     lines += _table(
-        ["when", "model", "status", "in", "out", "cost", "time", "video", "title"],
+        ["when", "model", "kind", "status", "in", "out", "cost", "time", "video", "title"],
         [
-            [ts[:16].replace("T", " "), model, status, _num(tin), _num(tout), _cost(cost),
+            [ts[:16].replace("T", " "), model, kind or "-", status, _num(tin), _num(tout), _cost(cost),
              _secs(secs), video_id or "-", title or "-"]
-            for ts, model, status, tin, tout, cost, secs, video_id, title in recent
+            for ts, model, kind, status, tin, tout, cost, secs, video_id, title in recent
         ],
     )
     return "\n".join(lines)
