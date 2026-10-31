@@ -10,9 +10,9 @@ from youtube_summarizer.digest import channels as ch
 from youtube_summarizer.digest import pipeline
 from youtube_summarizer.digest import state as st
 from youtube_summarizer.digest.config import Config
-from youtube_summarizer.downloader import TranscriptError
+from youtube_summarizer.downloader import TranscriptBlocked, TranscriptError
 from youtube_summarizer.digest.notes import read_frontmatter
-from youtube_summarizer.digest.youtube import FeedEntry, FeedError, VideoMeta
+from youtube_summarizer.digest.youtube import FeedEntry, FeedError, VideoMeta, YouTubeBlocked
 
 NOW = datetime(2026, 10, 21, 8, 0, tzinfo=timezone.utc)
 SUMMARY = "## Summary\n\nProse.\n\n## Key Takeaways\n\n- a\n\n## Deep dive?\n\nNo, an overview."
@@ -33,7 +33,8 @@ def world(tmp_path, monkeypatch, mocker):
     vault.mkdir()
     skill = tmp_path / "SKILL.md"
     skill.write_text("FULL TEMPLATE")
-    cfg = Config(vault_dir=vault, skill_path=skill, env_file=tmp_path / "none.env")
+    cfg = Config(vault_dir=vault, skill_path=skill, env_file=tmp_path / "none.env",
+                 feed_delay_s=(0, 0), transcript_delay_s=(0, 0))
 
     feeds = {"UCa": [_entry("aaaaaaaaaa1", "UCa", 1), _entry("aaaaaaaaaa2", "UCa", 2)],
              "UCb": [_entry("bbbbbbbbbb1", "UCb", 3)]}
@@ -274,3 +275,56 @@ def test_short_reason():
         "Error downloading transcript for _UetnlytnJ4: Subtitles are disabled for this video")
     assert pipeline.short_reason("plain error") == "plain error"
     assert len(pipeline.short_reason("x" * 500)) <= 200
+
+
+def _paused_until():
+    return (st.data_dir() / "paused_until").read_text().strip()
+
+
+def test_feed_block_stops_youtube_requests_and_pauses(world):
+    world.fetch_feed.side_effect = YouTubeBlocked("feed for UCa: redirected to google.com/sorry")
+    report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert not report.fatal
+    assert world.fetch_feed.call_count == 1  # no second feed after the block
+    world.fetch_meta.assert_not_called()
+    world.download.assert_not_called()
+    assert "Run stopped: YouTube is blocking this IP** (step: feeds" in _digest(world)
+    assert _paused_until() == "2026-10-23"
+    assert st.load_state().block_streak == 1
+
+
+def test_transcript_block_leaves_attempts_unchanged(world):
+    world.download.side_effect = TranscriptBlocked("Error downloading transcript: IpBlocked")
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert world.download.call_count == 1  # stopped at the first block
+    state = st.load_state()
+    assert all(r.attempts == 0 for r in state.videos.values())
+    assert state.videos["aaaaaaaaaa1"].status == "pending"
+    assert "(step: transcripts" in _digest(world)
+    assert _paused_until() == "2026-10-23"
+
+
+def test_refresh_block_skips_feeds(world):
+    world.refresh.side_effect = YouTubeBlocked("3 feeds failed")
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    world.fetch_feed.assert_not_called()
+    assert "(step: channel refresh" in _digest(world)
+
+
+def test_consecutive_blocks_double_the_pause_and_a_clean_run_resets(world):
+    world.fetch_feed.side_effect = YouTubeBlocked("429")
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert _paused_until() == "2026-10-25" and st.load_state().block_streak == 2
+    world.fetch_feed.side_effect = lambda cid: world.feeds[cid]
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert st.load_state().block_streak == 0
+
+
+def test_deep_dives_still_run_after_a_block(world):
+    note = world.vault / "2026-10-19 LLM - Old.md"
+    note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n')
+    (world.vault / "2026-10-19 LLM - Old - transcript.md").write_text("## Transcript\n\nsaved words")
+    world.fetch_feed.side_effect = YouTubeBlocked("429")
+    report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert report.deep_dives == ["[[2026-10-19 LLM - Old - deep dive]]"]

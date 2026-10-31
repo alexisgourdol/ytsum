@@ -252,3 +252,23 @@ class TestDownloadTranscriptIntegration:
         assert isinstance(result, str)
         print(f"\nDownloaded transcript length: {len(result)} characters")
         print(f"First 200 characters: {result[:200]}")
+
+
+class TestDownloadTranscriptBlocked:
+    """A YouTube block is its own error, so callers don't count it against the video"""
+
+    @pytest.mark.parametrize("name", ["IpBlocked", "RequestBlocked"])
+    def test_block_raises_transcript_blocked(self, mocker, name):
+        import youtube_transcript_api as yta
+        from youtube_summarizer.downloader import TranscriptBlocked
+        mocker.patch.object(yta.YouTubeTranscriptApi, "list", side_effect=getattr(yta, name)("abcdefghijk"))
+        with pytest.raises(TranscriptBlocked):
+            download_transcript("abcdefghijk")
+
+    def test_other_errors_stay_transcript_errors(self, mocker):
+        import youtube_transcript_api as yta
+        from youtube_summarizer.downloader import TranscriptBlocked
+        mocker.patch.object(yta.YouTubeTranscriptApi, "list", side_effect=yta.TranscriptsDisabled("abcdefghijk"))
+        with pytest.raises(TranscriptError) as info:
+            download_transcript("abcdefghijk")
+        assert not isinstance(info.value, TranscriptBlocked)

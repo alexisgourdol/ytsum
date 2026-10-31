@@ -69,3 +69,13 @@ def test_cli_dispatches_digest(mocker, monkeypatch):
         cli.main()
     assert exc.value.code == 0
     digest_main.assert_called_once_with(["--once-per-day"])
+
+
+def test_load_config_delay_bounds(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("feed_delay_s = [1, 2]\n")
+    cfg = load_config(path)
+    assert cfg.feed_delay_s == (1, 2) and cfg.transcript_delay_s == (40, 70)
+    path.write_text("feed_delay_s = [9, 2]\n")
+    with pytest.raises(ValueError, match="feed_delay_s"):
+        load_config(path)

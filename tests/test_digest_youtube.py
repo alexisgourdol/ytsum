@@ -93,3 +93,50 @@ def test_api_get_wraps_connection_and_bad_json(mocker):
     mocker.patch("urllib.request.urlopen", return_value=html)
     with pytest.raises(yt.YouTubeApiError):
         yt.api_get("videos", {}, api_key="k")
+
+
+def test_pacer_waits_within_bounds_except_before_the_first_request():
+    waits = []
+    pacer = yt.Pacer((5, 8), "feed", sleep=waits.append)
+    for _ in range(50):
+        pacer.wait()
+    assert len(waits) == 49 and all(5 <= w <= 8 for w in waits)
+
+
+def test_pacer_at_zero_never_sleeps():
+    waits = []
+    pacer = yt.Pacer((0, 0), "feed", sleep=waits.append)
+    pacer.wait(), pacer.wait()
+    assert waits == []
+
+
+def test_fetch_feed_429_is_a_block(mocker):
+    import urllib.error
+    mocker.patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("u", 429, "Too Many", {}, None))
+    with pytest.raises(yt.YouTubeBlocked, match="429"):
+        yt.fetch_feed("UCx")
+
+
+def test_fetch_feed_sorry_redirect_is_a_block(mocker):
+    import urllib.error
+    sorry = "https://www.google.com/sorry/index?continue=https://www.youtube.com/feeds"
+    mocker.patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(sorry, 403, "Forbidden", {}, None))
+    with pytest.raises(yt.YouTubeBlocked, match="sorry"):
+        yt.fetch_feed("UCx")
+    page = mocker.MagicMock()
+    page.__enter__.return_value.geturl.return_value = sorry
+    mocker.patch("urllib.request.urlopen", return_value=page)
+    with pytest.raises(yt.YouTubeBlocked, match="sorry"):
+        yt.fetch_feed("UCx")
+
+
+def test_three_feed_http_errors_in_one_run_are_a_block(mocker):
+    errors = [yt.FeedError("feed: 404", status=404), yt.FeedError("feed: reset"),
+              yt.FeedError("feed: 500", status=500), yt.FeedError("feed: 404", status=404)]
+    mocker.patch.object(yt, "fetch_feed", side_effect=errors)
+    feeds = yt.Feeds((0, 0))
+    for _ in range(3):  # 404, connection reset (not counted), 500
+        with pytest.raises(yt.FeedError):
+            feeds.fetch("UCx")
+    with pytest.raises(yt.YouTubeBlocked, match="3 feeds"):
+        feeds.fetch("UCx")

@@ -2,7 +2,10 @@
 
 import http.client
 import json
+import logging
+import random
 import re
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,8 +24,21 @@ NS = {
 }
 
 
+FEED_ERRORS_BEFORE_BLOCK = 3  # feeds failing with an HTTP error in one run (2026-10-31: 14/20 gave 404/500)
+
+log = logging.getLogger("ytsum.digest")
+
+
 class FeedError(Exception):
-    """A channel feed could not be fetched or parsed."""
+    """A channel feed could not be fetched or parsed; status is the HTTP code, if there was one."""
+
+    def __init__(self, message: str, status: Optional[int] = None):
+        super().__init__(message)
+        self.status = status
+
+
+class YouTubeBlocked(Exception):
+    """YouTube is blocking this IP (Google /sorry page, HTTP 429, ...): the run must stop asking."""
 
 
 class YouTubeApiError(Exception):
@@ -62,14 +78,67 @@ def parse_feed(xml_text: str) -> list[FeedEntry]:
     return entries
 
 
+_sleep = time.sleep  # tests replace it, so no test waits for real
+
+
+class Pacer:
+    """A random wait within bounds (seconds) before each request of one kind, except the first."""
+
+    def __init__(self, bounds: tuple[float, float], kind: str, sleep=None):
+        self.low, self.high = bounds
+        self.kind, self.sleep, self.started = kind, sleep, False
+
+    def wait(self) -> None:
+        if self.started and self.high > 0:
+            delay = random.uniform(self.low, self.high)
+            log.info("waiting %.1f s before the next %s request", delay, self.kind)
+            (self.sleep or _sleep)(delay)
+        self.started = True
+
+
+def _is_sorry(url: Optional[str]) -> bool:
+    parsed = urllib.parse.urlparse(url or "")
+    return (parsed.hostname or "").endswith("google.com") and parsed.path.startswith("/sorry")
+
+
 def fetch_feed(channel_id: str) -> list[FeedEntry]:
+    """
+    Raises:
+        YouTubeBlocked: on HTTP 429 or a redirect to Google's /sorry page.
+        FeedError: for anything else.
+    """
     url = FEED_URL.format(urllib.parse.quote(channel_id))
     try:
         with urllib.request.urlopen(url, timeout=TIMEOUT_S) as r:
+            if _is_sorry(r.geturl()):
+                raise YouTubeBlocked(f"feed for {channel_id}: redirected to {r.geturl()}")
             return parse_feed(r.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        if e.code == 429 or _is_sorry(e.geturl()):
+            raise YouTubeBlocked(f"feed for {channel_id}: HTTP {e.code} from {e.geturl()}") from e
+        raise FeedError(f"feed for {channel_id}: {e}", status=e.code) from e
     except (OSError, http.client.HTTPException, ValueError, ET.ParseError) as e:
         # OSError covers URLError, timeouts and connection resets; ValueError covers bad UTF-8.
         raise FeedError(f"feed for {channel_id}: {e}") from e
+
+
+class Feeds:
+    """Feed reads for one run: spaced out, and a block once FEED_ERRORS_BEFORE_BLOCK feeds fail over HTTP."""
+
+    def __init__(self, delay_s: tuple[float, float], sleep=None):
+        self.pacer = Pacer(delay_s, "feed", sleep)
+        self.http_errors = 0
+
+    def fetch(self, channel_id: str) -> list[FeedEntry]:
+        self.pacer.wait()
+        try:
+            return fetch_feed(channel_id)
+        except FeedError as e:
+            if e.status is not None:
+                self.http_errors += 1
+                if self.http_errors >= FEED_ERRORS_BEFORE_BLOCK:
+                    raise YouTubeBlocked(f"{self.http_errors} feeds failed over HTTP this run, last: {e}") from e
+            raise
 
 
 _DURATION = re.compile(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")

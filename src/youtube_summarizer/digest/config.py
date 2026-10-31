@@ -23,6 +23,9 @@ class Config:
     pending_max_days: int = 14
     max_attempts: int = 3
     refresh_days: int = 30
+    # Random wait (seconds) between YouTube requests, so the IP isn't blocked (SCP-100).
+    feed_delay_s: tuple[float, float] = (5, 8)
+    transcript_delay_s: tuple[float, float] = (40, 70)
     vault_dir: Path = Path("/workspace-external/obsidian-synch/general-kb/01-raw")
     topic_tag: str = "LLM"
     skill_path: Path = Path("~/.claude/skills/video-summary/SKILL.md").expanduser()
@@ -31,6 +34,7 @@ class Config:
 
 
 PATH_FIELDS = {"vault_dir", "skill_path", "env_file"}
+DELAY_FIELDS = {"feed_delay_s", "transcript_delay_s"}
 
 
 def data_dir() -> Path:
@@ -45,7 +49,8 @@ def load_config(path: Optional[Path] = None) -> Config:
     Read config.toml (default: in data_dir()); every key is optional.
 
     Raises:
-        ValueError: for a key Config doesn't know, so a typo can't be silently ignored.
+        ValueError: for a key Config doesn't know, so a typo can't be silently ignored,
+            or a delay that isn't [min, max] seconds.
     """
     path = path or data_dir() / "config.toml"
     if not path.exists():
@@ -57,6 +62,11 @@ def load_config(path: Optional[Path] = None) -> Config:
         raise ValueError(f"Unknown key(s) in {path}: {', '.join(unknown)}")
     for key in PATH_FIELDS & set(values):
         values[key] = Path(values[key]).expanduser()
+    for key in DELAY_FIELDS & set(values):
+        bounds = values[key]
+        if not (isinstance(bounds, list) and len(bounds) == 2 and 0 <= bounds[0] <= bounds[1]):
+            raise ValueError(f"{key} in {path} must be [min, max] seconds, got {bounds!r}")
+        values[key] = (bounds[0], bounds[1])
     return replace(Config(), **values)
 
 
