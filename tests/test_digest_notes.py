@@ -102,11 +102,11 @@ def test_render_digest_sections_and_order():
         new=["[[note A]] · Chan · 25:10 · deep dive: yes — tutorial"],
         skipped=["Vlog · Chan · off-topic: travel"],
         failures=["Feed for UCx: 404"],
-        channel_changes=["+ New Chan (discovery): 2 on-topic videos, 50k avg views"],
+        stale_channels=["? Old Chan (news): no uploads for 90 days — consider replacing it"],
         usage=[("anthropic:claude-haiku-5-5", "summary", 2, 30000, 1500, 0.0038)],
     )
     text = nt.render_digest(report, DAY)
-    order = [text.index(h) for h in ["Channel list changes", "New videos", "Skipped", "Failures", "Usage"]]
+    order = [text.index(h) for h in ["Stale channels", "New videos", "Skipped", "Failures", "Usage"]]
     assert order == sorted(order)
     assert "Carried over" not in text  # empty sections omitted
     assert "anthropic:claude-haiku-5-5" in text and "30,000" in text

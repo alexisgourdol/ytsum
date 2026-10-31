@@ -22,7 +22,6 @@ class Config:
     first_run_days: int = 2
     pending_max_days: int = 14
     max_attempts: int = 3
-    refresh_days: int = 30
     # Random wait (seconds) between YouTube requests, so the IP isn't blocked (SCP-100).
     feed_delay_s: tuple[float, float] = (5, 8)
     transcript_delay_s: tuple[float, float] = (40, 70)
@@ -35,6 +34,8 @@ class Config:
 
 PATH_FIELDS = {"vault_dir", "skill_path", "env_file"}
 DELAY_FIELDS = {"feed_delay_s", "transcript_delay_s"}
+# Keys older config files may still set; ignored. refresh_days went with the channel auto-refresh (SCP-78).
+RETIRED_FIELDS = {"refresh_days"}
 
 
 def data_dir() -> Path:
@@ -55,7 +56,7 @@ def load_config(path: Optional[Path] = None) -> Config:
     path = path or data_dir() / "config.toml"
     if not path.exists():
         return Config()
-    values = tomllib.loads(path.read_text())
+    values = {k: v for k, v in tomllib.loads(path.read_text()).items() if k not in RETIRED_FIELDS}
     known = {f.name for f in fields(Config)}
     unknown = sorted(set(values) - known)
     if unknown:

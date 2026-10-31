@@ -57,7 +57,7 @@ def world(tmp_path, monkeypatch, mocker):
                                        side_effect=lambda ids, api_key: {i: meta[i] for i in ids if i in meta})
     m.download = mocker.patch.object(pipeline, "download_transcript", side_effect=lambda vid: f"transcript of {vid}")
     m.complete = mocker.patch.object(pipeline.llm, "complete", side_effect=fake_complete)
-    m.refresh = mocker.patch.object(pipeline.channels, "maybe_refresh", return_value=[])
+    m.api_get = mocker.patch.object(pipeline.youtube, "api_get")  # search, channels: never during a run
     m.cfg, m.vault, m.feeds = cfg, vault, feeds
     return m
 
@@ -304,11 +304,33 @@ def test_transcript_block_leaves_attempts_unchanged(world):
     assert _paused_until() == "2026-10-23"
 
 
-def test_refresh_block_skips_feeds(world):
-    world.refresh.side_effect = YouTubeBlocked("3 feeds failed")
-    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
-    world.fetch_feed.assert_not_called()
-    assert "(step: channel refresh" in _digest(world)
+def test_run_never_searches_or_judges_channels(world):
+    report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    world.api_get.assert_not_called()  # no YouTube search for new channels
+    judge_calls = [c for c in world.complete.call_args_list if c.kwargs["kind"] == "judge"]
+    assert len(judge_calls) == 1  # the day's videos, nothing about channels
+    judged = {l.split(": ", 1)[1] for l in judge_calls[0].args[1].splitlines() if l.startswith("### video_id: ")}
+    assert judged <= {e.video_id for feed in world.feeds.values() for e in feed}
+    assert "Channel" not in _digest(world)
+    assert report.stale_channels == []
+
+
+def test_stale_check_monthly_from_the_runs_own_feeds(world):
+    world.feeds["UCb"] = [_entry("bbbbbbbbbb1", "UCb", 24 * 100)]
+    st.save_state(st.State(last_stale_check="2026-09-21"))
+    report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert world.fetch_feed.call_count == 2  # one read per channel: the check adds none
+    assert report.stale_channels == ["? Chan UCb (news): no uploads for 90 days — consider replacing it"]
+    assert "## Stale channels" in _digest(world)
+    assert st.load_state().last_stale_check == "2026-10-21"
+    assert pipeline.run_digest(world.cfg, NOW, once_per_day=False).stale_channels == []  # not due again
+
+
+def test_block_skips_the_stale_check(world):
+    world.fetch_feed.side_effect = YouTubeBlocked("429")
+    report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert report.stale_channels == []
+    assert st.load_state().last_stale_check == ""  # retried next run
 
 
 def test_consecutive_blocks_double_the_pause_and_a_clean_run_resets(world):

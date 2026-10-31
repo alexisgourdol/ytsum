@@ -82,7 +82,7 @@ def test_retry_then_give_up():
 
 
 def test_window_applies_to_a_channel_seen_for_the_first_time_later():
-    """A channel added after the first run (monthly refresh, channels add) doesn't flood the digest."""
+    """A channel added after the first run (digest channels add) doesn't flood the digest."""
     state = State(first_run_done=True, seen_channels=["UC1"])
     added = sel.register_new(state, [_entry("old-new-channel", channel="UCnew", days_ago=40),
                                      _entry("fresh-new-channel", channel="UCnew", days_ago=1),

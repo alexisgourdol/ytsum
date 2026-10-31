@@ -34,6 +34,14 @@ def test_load_config_unknown_key(tmp_path):
         load_config(path)
 
 
+def test_load_config_ignores_retired_refresh_days(tmp_path):
+    """refresh_days set the channel auto-refresh, removed in SCP-78."""
+    path = tmp_path / "config.toml"
+    path.write_text("refresh_days = 30\ndaily_cap = 5\n")
+    cfg = load_config(path)
+    assert cfg.daily_cap == 5 and not hasattr(cfg, "refresh_days")
+
+
 def test_load_config_reads_data_dir_by_default(isolated_run_log):
     (isolated_run_log.parent / "digest").mkdir()
     (isolated_run_log.parent / "digest" / "config.toml").write_text("daily_cap = 7\n")

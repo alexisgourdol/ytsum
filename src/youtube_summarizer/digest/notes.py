@@ -169,7 +169,7 @@ class DigestReport:
     failures: list[str] = field(default_factory=list)
     given_up: list[str] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
-    channel_changes: list[str] = field(default_factory=list)
+    stale_channels: list[str] = field(default_factory=list)
     # (log_model, kind, calls, input_tokens, output_tokens, est_cost_usd or None)
     usage: list[tuple] = field(default_factory=list)
     fatal: str = ""
@@ -184,7 +184,7 @@ def render_digest(report: DigestReport, day: date) -> str:
         lines += [f"**Run stopped: YouTube is blocking this IP** (step: {report.blocked}). "
                   "No more YouTube requests this run; the digest is paused (see `paused_until`).", ""]
     sections = [
-        ("Channel list changes", report.channel_changes),
+        ("Stale channels", report.stale_channels),
         ("New videos", report.new),
         ("Deep dives written", report.deep_dives),
         ("Skipped", report.skipped),
