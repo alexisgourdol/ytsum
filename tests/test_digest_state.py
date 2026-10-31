@@ -59,3 +59,14 @@ def test_stale_lock_is_taken_over():
     os.utime(lock, (old, old))
     with st.acquire_lock() as got:
         assert got
+
+
+def test_pause_after_block_doubles_up_to_14_days_and_resets():
+    state = st.State()
+    today = date(2026, 10, 31)
+    days = [(st.pause_after_block(state, today) - today).days for _ in range(5)]
+    assert days == [2, 4, 8, 14, 14]
+    assert (data_dir() / "paused_until").read_text().strip() == "2026-11-14"
+    assert st.load_state().block_streak == 0  # pause_after_block doesn't save; the run does
+    state.block_streak = 0
+    assert (st.pause_after_block(state, today) - today).days == 2

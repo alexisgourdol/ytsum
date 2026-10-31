@@ -4,6 +4,7 @@ import re
 import tomllib
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from typing import Optional
 
 from youtube_summarizer.digest import judge, llm, youtube
 from youtube_summarizer.digest.config import Config, data_dir
@@ -82,20 +83,20 @@ def _due(state: State, now: datetime, cfg: Config) -> bool:
     return (now.date() - date.fromisoformat(state.last_refresh)).days >= cfg.refresh_days
 
 
-def _mostly_on_topic(channel_ids: list[str], cfg: Config) -> set[str]:
+def _mostly_on_topic(channel_ids: list[str], cfg: Config, feeds: youtube.Feeds) -> set[str]:
     """Channels whose latest uploads are at least MIN_ON_TOPIC_SHARE on topic (one judge call for all)."""
-    feeds = {}
+    read = {}
     for cid in channel_ids:
         try:
-            feeds[cid] = youtube.fetch_feed(cid)
+            read[cid] = feeds.fetch(cid)
         except youtube.FeedError:
             continue  # can't check it, so it doesn't qualify
-    if channel_ids and not feeds:
+    if channel_ids and not read:
         raise youtube.FeedError("could not read any candidate channel's feed")
-    entries = [e for feed in feeds.values() for e in feed]
+    entries = [e for feed in read.values() for e in feed]
     verdicts = judge.judge(entries, cfg)
     passing = set()
-    for cid, feed in feeds.items():
+    for cid, feed in read.items():
         if not feed:
             continue
         on = sum(1 for e in feed if e.video_id in verdicts and verdicts[e.video_id].on_topic)
@@ -104,7 +105,8 @@ def _mostly_on_topic(channel_ids: list[str], cfg: Config) -> set[str]:
     return passing
 
 
-def _discover(listed: set[str], cfg: Config, now: datetime, api_key: str) -> list[tuple[str, str, int, int]]:
+def _discover(listed: set[str], cfg: Config, now: datetime, api_key: str,
+              feeds: youtube.Feeds) -> list[tuple[str, str, int, int]]:
     """(channel_id, name, on-topic videos, average views) for new candidate channels, best first."""
     after = (now - timedelta(days=DISCOVERY_WINDOW_DAYS)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     videos: dict[str, youtube.FeedEntry] = {}
@@ -124,7 +126,7 @@ def _discover(listed: set[str], cfg: Config, now: datetime, api_key: str) -> lis
             on_topic.setdefault(videos[vid].channel_id, []).append(vid)
     qualified = {cid: vids for cid, vids in on_topic.items() if len(vids) >= MIN_ON_TOPIC_VIDEOS}
     if qualified:
-        passing = _mostly_on_topic(list(qualified), cfg)  # once: one judge call for all candidates
+        passing = _mostly_on_topic(list(qualified), cfg, feeds)  # once: one judge call for all candidates
         qualified = {cid: vids for cid, vids in qualified.items() if cid in passing}
     if not qualified:
         return []
@@ -137,13 +139,13 @@ def _discover(listed: set[str], cfg: Config, now: datetime, api_key: str) -> lis
     return sorted(ranked, key=lambda r: r[3], reverse=True)
 
 
-def _stale_lines(chs: list[Channel], now: datetime) -> list[str]:
+def _stale_lines(chs: list[Channel], now: datetime, feeds: youtube.Feeds) -> list[str]:
     lines = []
     for c in chs:
         if c.pinned or c.bucket == "discovery":
             continue
         try:
-            feed = youtube.fetch_feed(c.channel_id)
+            feed = feeds.fetch(c.channel_id)
         except youtube.FeedError as e:
             lines.append(f"? {c.name} ({c.bucket}): feed unavailable ({e}) — check the channel")
             continue
@@ -153,18 +155,21 @@ def _stale_lines(chs: list[Channel], now: datetime) -> list[str]:
     return lines
 
 
-def maybe_refresh(cfg: Config, state: State, now: datetime, api_key: str) -> list[str]:
+def maybe_refresh(cfg: Config, state: State, now: datetime, api_key: str,
+                  feeds: Optional[youtube.Feeds] = None) -> list[str]:
     """
     Monthly channel refresh; returns change lines for the digest.
     Only unpinned discovery channels are replaced; other buckets only get suggestions.
     On failure nothing changes and the refresh is retried next run.
+    A youtube.YouTubeBlocked is not caught: the run stops.
     """
     if not _due(state, now, cfg):
         return []
+    feeds = feeds or youtube.Feeds(cfg.feed_delay_s)
     chs = load_channels()
     try:
-        ranked = _discover({c.channel_id for c in chs}, cfg, now, api_key)
-        stale = _stale_lines(chs, now)
+        ranked = _discover({c.channel_id for c in chs}, cfg, now, api_key, feeds)
+        stale = _stale_lines(chs, now, feeds)
     except (youtube.YouTubeApiError, youtube.FeedError, judge.JudgeError, llm.LlmError) as e:
         return [f"Channel refresh failed, retried next run: {short_reason(e)}"]
 

@@ -5,12 +5,13 @@ import os
 import time
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Iterator, Optional
 
 from youtube_summarizer.digest.config import data_dir
 
 STALE_LOCK_SECONDS = 3 * 3600
+MAX_PAUSE_DAYS = 14
 
 
 @dataclass
@@ -35,6 +36,8 @@ class State:
     last_refresh: str = ""
     # Channels whose feed was read at least once; a channel's first read only takes recent videos.
     seen_channels: list[str] = field(default_factory=list)
+    # Runs in a row stopped by a YouTube block; sets the length of the pause.
+    block_streak: int = 0
 
 
 def load_state() -> State:
@@ -44,7 +47,8 @@ def load_state() -> State:
     raw = json.loads(path.read_text())
     videos = {vid: VideoRecord(**rec) for vid, rec in raw.get("videos", {}).items()}
     return State(videos=videos, first_run_done=raw.get("first_run_done", False),
-                 last_refresh=raw.get("last_refresh", ""), seen_channels=raw.get("seen_channels", []))
+                 last_refresh=raw.get("last_refresh", ""), seen_channels=raw.get("seen_channels", []),
+                 block_streak=raw.get("block_streak", 0))
 
 
 def save_state(state: State) -> None:
@@ -53,6 +57,17 @@ def save_state(state: State) -> None:
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(json.dumps(asdict(state), indent=1, ensure_ascii=False))
     os.replace(tmp, path)
+
+
+def pause_after_block(state: State, today: date) -> date:
+    """
+    Write paused_until (read by the session-start hook): 2 days after a first block, doubling
+    for each block in a row, at most MAX_PAUSE_DAYS. The caller saves the state.
+    """
+    state.block_streak += 1
+    until = today + timedelta(days=min(2 ** state.block_streak, MAX_PAUSE_DAYS))
+    (data_dir() / "paused_until").write_text(until.isoformat() + "\n")
+    return until
 
 
 def already_ran_today(today: date) -> bool:

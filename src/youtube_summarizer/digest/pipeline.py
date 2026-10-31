@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from youtube_summarizer import runlog
-from youtube_summarizer.downloader import TranscriptError, download_transcript
+from youtube_summarizer.downloader import TranscriptBlocked, TranscriptError, download_transcript
 from youtube_summarizer.digest import channels, judge, llm, notes, select, state as st, youtube
 from youtube_summarizer.digest.config import Config, data_dir, load_env_file
 from youtube_summarizer.digest.errors import short_reason
@@ -37,6 +37,9 @@ class _Run:
         self.state = st.load_state()
         self.entries: dict[str, youtube.FeedEntry] = {}
         self.transcripts: dict[str, str] = {}
+        self.feeds = youtube.Feeds(cfg.feed_delay_s)
+        self.transcript_pacer = youtube.Pacer(cfg.transcript_delay_s, "transcript")
+        self.step = ""  # the YouTube step running, named in the digest if a block stops it
 
     def fail(self, rec: st.VideoRecord, reason: str) -> None:
         reason = short_reason(reason)
@@ -57,7 +60,7 @@ class _Run:
     def discover(self, chs: list[channels.Channel]) -> None:
         for c in chs:
             try:
-                feed = youtube.fetch_feed(c.channel_id)
+                feed = self.feeds.fetch(c.channel_id)
             except youtube.FeedError as e:
                 self.report.failures.append(f"{c.name}: {short_reason(e)}")
                 continue
@@ -112,8 +115,12 @@ class _Run:
 
     def transcript(self, rec: st.VideoRecord) -> Optional[str]:
         if rec.video_id not in self.transcripts:
+            self.transcript_pacer.wait()
             try:
                 self.transcripts[rec.video_id] = download_transcript(rec.video_id)
+            except TranscriptBlocked as e:
+                # Not the video's fault: attempts stay as they are.
+                raise youtube.YouTubeBlocked(str(e)) from e
             except TranscriptError as e:
                 self.fail(rec, str(e))
                 return None
@@ -236,13 +243,23 @@ def _run_locked(cfg: Config, now: datetime) -> DigestReport:
         chs = channels.load_channels()
         if not chs:
             raise FatalError("the channel list is empty (youtube-summarizer digest channels add ...)")
-        run.report.channel_changes = channels.maybe_refresh(cfg, run.state, now, api_key)
-        run.discover(channels.load_channels())
-        run.triage(api_key)
-        run.summarize()
-        run.deep_dives()
-        run.state.first_run_done = True
+        try:
+            run.step = "channel refresh"
+            run.report.channel_changes = channels.maybe_refresh(cfg, run.state, now, api_key, run.feeds)
+            run.step = "feeds"
+            run.discover(channels.load_channels())
+            run.step = "transcripts"  # triage only calls the Data API, which isn't blocked by IP
+            run.triage(api_key)
+            run.summarize()
+        except youtube.YouTubeBlocked as e:
+            run.report.blocked = f"{run.step}: {short_reason(str(e))}"
+            until = st.pause_after_block(run.state, now.date())
+            log.error("YouTube is blocking this IP (%s); paused until %s", run.report.blocked, until)
+        else:
+            run.state.block_streak = 0
+            run.state.first_run_done = True
         st.save_state(run.state)
+        run.deep_dives()  # saved transcripts only: no YouTube requests
     except FatalError as e:
         run.report.fatal = str(e)
         log.error("run failed: %s", e)

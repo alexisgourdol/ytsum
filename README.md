@@ -293,6 +293,8 @@ youtube-summarizer digest --mode subscription  # summarize with `claude -p` on t
 - **Keys:** `YOUTUBE_API_KEY` (YouTube Data API v3), and `ANTHROPIC_API_KEY` in `api` mode, from the environment or the `env_file` in `config.toml`.
 - **Settings and state** live in `~/.local/share/ytsum/digest/` (next to the run log): `config.toml` (every key optional: `mode`, models, caps, `vault_dir`, ...), `channels.toml`, `state.json`, `digest.log`.
 - **Modes:** `api` uses pydantic-ai on the Anthropic API; `subscription` runs `claude -p` with no tools and without `ANTHROPIC_API_KEY`, so it bills the Claude plan. Both log every call to the run log (`anthropic:<model>` vs `claude-code:<model>`, with a `kind` of judge / summary / deep_dive), so `--stats` compares them.
+- **Pacing:** a random wait between YouTube requests: `feed_delay_s = [5, 8]` between feeds, `transcript_delay_s = [40, 70]` between transcripts (seconds, set in `config.toml`). A run takes about 10–15 minutes.
+- **YouTube blocks:** a Google `/sorry` redirect, an HTTP 429, a transcript-api `RequestBlocked`/`IpBlocked`, or 3 feeds failing over HTTP in one run stop the run's YouTube requests at once. The video's attempts aren't counted, and the run writes `paused_until`: 2 days, doubling for each block in a row (at most 14), reset by a run without a block. The session-start hook doesn't run before that date; delete the file to resume early.
 - **Channel refresh:** every 30 days the 3 `discovery` channels are replaced by the best new AI channels from a YouTube search; pinned channels are never removed. Changes are listed in that day's digest note.
 
 ## Development

@@ -38,12 +38,16 @@ def _channels(args, cfg) -> int:
 
     if args.action == "list":
         rows = []
+        feeds = youtube.Feeds(cfg.feed_delay_s)
         for c in channels.load_channels():
             try:
-                feed = youtube.fetch_feed(c.channel_id)
+                feed = feeds.fetch(c.channel_id)
                 latest = max((e.published[:10] for e in feed), default="-")
             except youtube.FeedError:
                 latest = "feed error"
+            except youtube.YouTubeBlocked as e:
+                print(f"Stopped: YouTube is blocking this IP ({e})")
+                return 1
             rows.append((c.bucket, c.name, "pinned" if c.pinned else "", latest, c.channel_id))
         for row in sorted(rows):
             print("  ".join(row))

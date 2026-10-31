@@ -137,3 +137,8 @@ def test_failed_deep_dives_give_up_after_max_attempts(tmp_path):
     c = _write_note(tmp_path, "2026-10-19 LLM - c.md", 'digest_date: 2026-10-19\ndeep_dive_suggested: true\ndeep_dive_note: ""')
     found = nt.find_deep_dive_requests(tmp_path, cap=2, max_attempts=3)
     assert found == [b, c]  # a gave up, so it no longer takes a slot
+
+
+def test_render_digest_block_first():
+    text = nt.render_digest(nt.DigestReport(blocked="feeds: HTTP 429"), date(2026, 10, 31))
+    assert text.splitlines()[2].startswith("**Run stopped: YouTube is blocking this IP** (step: feeds: HTTP 429)")

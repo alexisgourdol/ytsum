@@ -41,6 +41,10 @@ class TranscriptError(Exception):
     """A transcript could not be downloaded (no captions, network error, ...)."""
 
 
+class TranscriptBlocked(TranscriptError):
+    """YouTube is blocking this IP (HTTP 429, Google /sorry page): nothing to do with the video."""
+
+
 def download_transcript(video_id: str, languages: list = None) -> str:
     """
     Download transcript for a YouTube video.
@@ -53,6 +57,7 @@ def download_transcript(video_id: str, languages: list = None) -> str:
         Transcript text as a string
 
     Raises:
+        TranscriptBlocked: if YouTube is blocking this IP.
         TranscriptError: if the library is missing or the download fails.
     """
     try:
@@ -102,6 +107,9 @@ def download_transcript(video_id: str, languages: list = None) -> str:
         return format_transcript(transcript_data.to_raw_data())
 
     except Exception as e:
+        from youtube_transcript_api import RequestBlocked  # IpBlocked (HTTP 429) is a subclass
+        if isinstance(e, RequestBlocked) or "google.com/sorry" in str(e):
+            raise TranscriptBlocked(f"YouTube is blocking transcript requests ({video_id}): {e}") from e
         raise TranscriptError(f"Error downloading transcript for {video_id}: {e}") from e
 
 

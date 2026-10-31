@@ -173,12 +173,16 @@ class DigestReport:
     # (log_model, kind, calls, input_tokens, output_tokens, est_cost_usd or None)
     usage: list[tuple] = field(default_factory=list)
     fatal: str = ""
+    blocked: str = ""  # "<step>: <reason>" when a YouTube block stopped the run
 
 
 def render_digest(report: DigestReport, day: date) -> str:
     lines = [f"# Digest {day.isoformat()}", ""]
     if report.fatal:
         lines += [f"**Run failed: {report.fatal}** — see `~/.local/share/ytsum/digest/digest.log`.", ""]
+    if report.blocked:
+        lines += [f"**Run stopped: YouTube is blocking this IP** (step: {report.blocked}). "
+                  "No more YouTube requests this run; the digest is paused (see `paused_until`).", ""]
     sections = [
         ("Channel list changes", report.channel_changes),
         ("New videos", report.new),
