@@ -36,6 +36,7 @@ class _Run:
         self.report = DigestReport()
         self.state = st.load_state()
         self.entries: dict[str, youtube.FeedEntry] = {}
+        self.channel_feeds: dict[str, list[youtube.FeedEntry]] = {}  # feeds read this run, by channel
         self.transcripts: dict[str, str] = {}
         self.feeds = youtube.Feeds(cfg.feed_delay_s)
         self.transcript_pacer = youtube.Pacer(cfg.transcript_delay_s, "transcript")
@@ -64,6 +65,7 @@ class _Run:
             except youtube.FeedError as e:
                 self.report.failures.append(f"{c.name}: {short_reason(e)}")
                 continue
+            self.channel_feeds[c.channel_id] = feed
             for e in feed:
                 self.entries[e.video_id] = e
             select.register_new(self.state, feed, self.now, self.cfg)
@@ -244,10 +246,11 @@ def _run_locked(cfg: Config, now: datetime) -> DigestReport:
         if not chs:
             raise FatalError("the channel list is empty (youtube-summarizer digest channels add ...)")
         try:
-            run.step = "channel refresh"
-            run.report.channel_changes = channels.maybe_refresh(cfg, run.state, now, api_key, run.feeds)
             run.step = "feeds"
-            run.discover(channels.load_channels())
+            run.discover(chs)
+            if channels.stale_check_due(run.state, now):
+                run.report.stale_channels = channels.stale_lines(chs, run.channel_feeds, now)
+                run.state.last_stale_check = now.date().isoformat()
             run.step = "transcripts"  # triage only calls the Data API, which isn't blocked by IP
             run.triage(api_key)
             run.summarize()

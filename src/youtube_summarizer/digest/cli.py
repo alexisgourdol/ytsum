@@ -25,7 +25,6 @@ def build_parser() -> argparse.ArgumentParser:
     add = chans.add_parser("add", help="Add a channel by URL, @handle or UC… ID")
     add.add_argument("ref")
     add.add_argument("--bucket", required=True, choices=["vault", "news", "labs", "discovery"])
-    add.add_argument("--pin", action="store_true", help="Never remove it in a monthly refresh")
     chans.add_parser("list", help="List channels with their latest upload date")
     return parser
 
@@ -48,7 +47,7 @@ def _channels(args, cfg) -> int:
             except youtube.YouTubeBlocked as e:
                 print(f"Stopped: YouTube is blocking this IP ({e})")
                 return 1
-            rows.append((c.bucket, c.name, "pinned" if c.pinned else "", latest, c.channel_id))
+            rows.append((c.bucket, c.name, latest, c.channel_id))
         for row in sorted(rows):
             print("  ".join(row))
         print(f"{len(rows)} channels")
@@ -60,7 +59,7 @@ def _channels(args, cfg) -> int:
         print("Error: YOUTUBE_API_KEY is not set")
         return 1
     try:
-        new = channels.resolve_channel(args.ref, api_key, bucket=args.bucket, pinned=args.pin)
+        new = channels.resolve_channel(args.ref, api_key, bucket=args.bucket)
     except (ValueError, youtube.YouTubeApiError) as e:
         print(f"Error: {e}")
         return 1

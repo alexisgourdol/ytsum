@@ -16,10 +16,19 @@ def _rec(video_id="v1", **kw):
 
 
 def test_state_roundtrip():
-    s = st.State(videos={"v1": _rec(attempts=2, duration_s=600)}, first_run_done=True, last_refresh="2026-10-01")
+    s = st.State(videos={"v1": _rec(attempts=2, duration_s=600)}, first_run_done=True, last_stale_check="2026-10-01")
     st.save_state(s)
     loaded = st.load_state()
     assert loaded == s
+
+
+def test_old_last_refresh_starts_the_stale_check_clock():
+    """state.json files written before SCP-78 have last_refresh, not last_stale_check."""
+    (data_dir() / "state.json").write_text('{"videos": {}, "first_run_done": true, "last_refresh": "2026-10-05"}')
+    loaded = st.load_state()
+    assert loaded.last_stale_check == "2026-10-05"
+    st.save_state(loaded)
+    assert "last_refresh" not in (data_dir() / "state.json").read_text()
 
 
 def test_load_state_missing_is_empty():

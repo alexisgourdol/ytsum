@@ -283,7 +283,7 @@ summary = summarize(transcript, model="anthropic:claude-sonnet-5-5",
 `youtube-summarizer digest` checks a list of channels for new videos and writes, into an Obsidian folder, a short note and the transcript for each new on-topic video (max 10 per run, 2 per channel) plus one `YYYY-MM-DD digest.md` note listing them. Shorts, livestreams, off-topic and fully sponsored videos are skipped. Tick `deep_dive: true` on a note and the next run adds a full `video-summary` deep dive from the saved transcript.
 
 ```bash
-youtube-summarizer digest channels add https://www.youtube.com/@samwitteveenai --bucket vault [--pin]
+youtube-summarizer digest channels add https://www.youtube.com/@samwitteveenai --bucket vault
 youtube-summarizer digest channels list
 youtube-summarizer digest                    # run now
 youtube-summarizer digest --once-per-day     # what the session-start hook runs
@@ -295,7 +295,8 @@ youtube-summarizer digest --mode subscription  # summarize with `claude -p` on t
 - **Modes:** `api` uses pydantic-ai on the Anthropic API; `subscription` runs `claude -p` with no tools and without `ANTHROPIC_API_KEY`, so it bills the Claude plan. Both log every call to the run log (`anthropic:<model>` vs `claude-code:<model>`, with a `kind` of judge / summary / deep_dive), so `--stats` compares them.
 - **Pacing:** a random wait between YouTube requests: `feed_delay_s = [5, 8]` between feeds, `transcript_delay_s = [40, 70]` between transcripts (seconds, set in `config.toml`). A run takes about 10–15 minutes.
 - **YouTube blocks:** a Google `/sorry` redirect, an HTTP 429, a transcript-api `RequestBlocked`/`IpBlocked`, or 3 feeds failing over HTTP in one run stop the run's YouTube requests at once. The video's attempts aren't counted, and the run writes `paused_until`: 2 days, doubling for each block in a row (at most 14), reset by a run without a block. The session-start hook doesn't run before that date; delete the file to resume early.
-- **Channel refresh:** every 30 days the 3 `discovery` channels are replaced by the best new AI channels from a YouTube search; pinned channels are never removed. Changes are listed in that day's digest note.
+- **Channels:** curated by hand. Add one with `digest channels add <URL, @handle or UC… ID> --bucket vault|news|labs|discovery` (the bucket is only a label), remove one by deleting its `[[channel]]` block in `channels.toml`. The digest never searches for, adds or removes channels.
+- **Stale channels:** once every 30 days, the digest note lists channels with no upload for 90 days, from the feeds that run already read (no extra request).
 
 ## Development
 
