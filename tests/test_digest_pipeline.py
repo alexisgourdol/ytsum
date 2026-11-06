@@ -71,7 +71,10 @@ def test_happy_path(world):
     assert report is not None and not report.fatal
     names = sorted(p.name for p in world.vault.iterdir())
     assert "2026-10-21 LLM - Video aaaaaaaaaa1.md" in names
-    assert "2026-10-21 LLM - Video aaaaaaaaaa1 - transcript.md" in names
+    assert not any(n.endswith(" - transcript.md") for n in names)
+    note = (world.vault / "2026-10-21 LLM - Video aaaaaaaaaa1.md").read_text()
+    assert note.endswith("## Transcript\n\ntranscript of aaaaaaaaaa1\n")
+    assert "Transcript: [[" not in note
     assert "2026-10-21 LLM - Video bbbbbbbbbb1.md" in names
     assert not any("aaaaaaaaaa2" in n for n in names)
     digest = _digest(world)
@@ -139,8 +142,8 @@ def test_lock_held_skips(world):
 
 def test_deep_dive_uses_saved_transcript(world):
     note = world.vault / "2026-10-19 LLM - Old.md"
-    note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n')
-    (world.vault / "2026-10-19 LLM - Old - transcript.md").write_text("## Transcript\n\nsaved words")
+    note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n'
+                    "\n## Summary\n\nShort.\n\n## Transcript\n\nsaved words\n")
 
     pipeline.run_digest(world.cfg, NOW, once_per_day=False)
 
@@ -225,7 +228,7 @@ def test_unavailable_video_is_listed(world):
 def test_deep_dive_failure_counts_attempts_then_gives_up(world):
     note = world.vault / "2026-10-19 LLM - Old.md"
     note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n')
-    # no transcript file next to it: every attempt fails
+    # no ## Transcript section in the note: every attempt fails
     for _ in range(3):
         pipeline.run_digest(world.cfg, NOW, once_per_day=False)
     assert read_frontmatter(note)["deep_dive_attempts"] == "3"
@@ -345,8 +348,8 @@ def test_consecutive_blocks_double_the_pause_and_a_clean_run_resets(world):
 
 def test_deep_dives_still_run_after_a_block(world):
     note = world.vault / "2026-10-19 LLM - Old.md"
-    note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n')
-    (world.vault / "2026-10-19 LLM - Old - transcript.md").write_text("## Transcript\n\nsaved words")
+    note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n'
+                    "\n## Summary\n\nShort.\n\n## Transcript\n\nsaved words\n")
     world.fetch_feed.side_effect = YouTubeBlocked("429")
     report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
     assert report.deep_dives == ["[[2026-10-19 LLM - Old - deep dive]]"]

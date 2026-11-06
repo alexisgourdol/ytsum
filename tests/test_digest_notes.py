@@ -19,26 +19,25 @@ def _write_note(tmp_path, name, frontmatter: str):
 
 
 def test_note_paths_follow_convention(tmp_path):
-    short, transcript, deep = nt.note_paths(tmp_path, DAY, "AI: agents?", "vid00000001")
+    short, deep = nt.note_paths(tmp_path, DAY, "AI: agents?", "vid00000001")
     assert short.name == "2026-10-21 LLM - AI- agents-.md"
-    assert transcript.name == "2026-10-21 LLM - AI- agents- - transcript.md"
     assert deep.name == "2026-10-21 LLM - AI- agents- - deep dive.md"
 
 
 def test_note_paths_never_collide(tmp_path):
-    first, _, _ = nt.note_paths(tmp_path, DAY, "Same", "AAAAAAAAAAA")
-    first.write_text(nt.render_short_note(_rec("AAAAAAAAAAA", "Same"), "body", False, DAY, "x - transcript"))
-    again, _, _ = nt.note_paths(tmp_path, DAY, "Same", "AAAAAAAAAAA")
+    first, _ = nt.note_paths(tmp_path, DAY, "Same", "AAAAAAAAAAA")
+    first.write_text(nt.render_short_note(_rec("AAAAAAAAAAA", "Same"), "body", False, DAY, "words"))
+    again, _ = nt.note_paths(tmp_path, DAY, "Same", "AAAAAAAAAAA")
     assert again == first  # same video: same file
-    other, other_t, _ = nt.note_paths(tmp_path, DAY, "Same", "BBBBBBBBBBB")
+    other, other_deep = nt.note_paths(tmp_path, DAY, "Same", "BBBBBBBBBBB")
     assert "(BBBBBBBBBBB)" in other.name and other != first
-    assert "(BBBBBBBBBBB)" in other_t.name
-    blank, _, _ = nt.note_paths(tmp_path, DAY, "???", "CCCCCCCCCCC")
+    assert "(BBBBBBBBBBB)" in other_deep.name
+    blank, _ = nt.note_paths(tmp_path, DAY, "???", "CCCCCCCCCCC")
     assert "CCCCCCCCCCC" in blank.name
 
 
-def test_render_short_note_frontmatter_and_links():
-    text = nt.render_short_note(_rec(), "## Summary\n\nProse.", True, DAY, "2026-10-21 LLM - Claude Code tips - transcript")
+def test_render_short_note_frontmatter_and_transcript():
+    text = nt.render_short_note(_rec(), "## Summary\n\nProse.", True, DAY, "the full words")
     fm = text.split("---")[1]
     for line in ["video_id: vid00000001", "url: https://www.youtube.com/watch?v=vid00000001",
                  'channel: "Sam Witteveen"', "digest_date: 2026-10-21", "deep_dive_suggested: true",
@@ -46,11 +45,15 @@ def test_render_short_note_frontmatter_and_links():
         assert line in fm
     assert "# Claude Code tips" in text
     assert "**Channel**: Sam Witteveen" in text and "**Topic**: LLM" in text
-    assert "[[2026-10-21 LLM - Claude Code tips - transcript]]" in text
+    assert "Transcript: [[" not in text
+    assert text.endswith("Prose.\n\n## Transcript\n\nthe full words\n")  # transcript is the last section
 
 
-def test_render_transcript():
-    assert nt.render_transcript("hello").startswith("## Transcript\n\nhello")
+def test_read_transcript_returns_the_last_section():
+    text = nt.render_short_note(_rec(), "## Summary\n\nProse.", False, DAY, "line one\nline two")
+    assert nt.read_transcript(text) == "line one\nline two"
+    assert nt.read_transcript("---\na: 1\n---\n\n# T\n\n## Summary\n\nNo transcript here\n") is None
+    assert nt.read_transcript("# T\n\n## Transcript\n\n   \n") is None  # empty section
 
 
 def test_flag_detection_tolerates_obsidian_edits(tmp_path):
@@ -59,7 +62,7 @@ def test_flag_detection_tolerates_obsidian_edits(tmp_path):
     _write_note(tmp_path, "2026-10-21 LLM - c.md", 'digest_date: 2026-10-21\ndeep_dive: false\ndeep_dive_suggested: true\ndeep_dive_note: ""')
     _write_note(tmp_path, "2026-10-21 LLM - done.md", 'digest_date: 2026-10-21\ndeep_dive: true\ndeep_dive_note: "[[x]]"')
     _write_note(tmp_path, "2026-10-21 LLM - not digest.md", 'deep_dive: true')
-    (tmp_path / "2026-10-21 LLM - c - transcript.md").write_text("## Transcript\n\ndigest_date: nope")
+    (tmp_path / "2026-10-21 LLM - c - deep dive.md").write_text("---\ndigest_date: 2026-10-21\ndeep_dive: true\n---\n")
 
     found = [p.name for p in nt.find_deep_dive_requests(tmp_path, cap=3)]
     assert found == ["2026-10-20 LLM - b.md", "2026-10-19 LLM - a.md", "2026-10-21 LLM - c.md"]
@@ -127,7 +130,7 @@ def test_write_digest_appends_second_run(tmp_path):
 
 
 def test_note_names_are_wikilink_safe(tmp_path):
-    short, _, _ = nt.note_paths(tmp_path, DAY, "Episode #3 [live] ^ notes", "vid00000001")
+    short, _ = nt.note_paths(tmp_path, DAY, "Episode #3 [live] ^ notes", "vid00000001")
     assert not any(c in short.stem for c in "[]#^|")
 
 

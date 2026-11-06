@@ -1,4 +1,4 @@
-"""Files the digest writes into the vault: short notes, transcripts, deep dives, the daily digest note."""
+"""Files the digest writes into the vault: short notes (transcript at the end), deep dives, the daily digest note."""
 
 import re
 from dataclasses import dataclass, field
@@ -23,8 +23,10 @@ Start with "Yes" or "No", then one sentence explaining why. Answer Yes for hands
 
 Write in the language of the transcript."""
 
-SUFFIX_TRANSCRIPT = " - transcript"
 SUFFIX_DEEP_DIVE = " - deep dive"
+TRANSCRIPT_HEADING = "## Transcript"
+# The first `## Transcript` heading: the summary above it never has one, the transcript below may contain anything.
+_TRANSCRIPT_SECTION = re.compile(r"^## Transcript[ \t]*$(.*)", re.M | re.S)
 
 
 def _duration(seconds) -> str:
@@ -75,8 +77,8 @@ def is_true(value: str) -> bool:
     return value.strip().strip("\"'").strip().lower() in ("true", "yes", "1")
 
 
-def note_paths(vault_dir: Path, day: date, title: str, video_id: str, topic: str = "LLM") -> tuple[Path, Path, Path]:
-    """(short note, transcript, deep dive) paths; a different video with the same title gets its ID appended."""
+def note_paths(vault_dir: Path, day: date, title: str, video_id: str, topic: str = "LLM") -> tuple[Path, Path]:
+    """(short note, deep dive) paths; a different video with the same title gets its ID appended."""
     # Obsidian wikilinks break on [ ] # ^ |, so the digest's own names drop them.
     name = re.sub(r"[\[\]#^|]", "", sanitize_filename(title)).strip()
     name = re.sub(r"\s{2,}", " ", name)
@@ -87,11 +89,12 @@ def note_paths(vault_dir: Path, day: date, title: str, video_id: str, topic: str
     if short.exists() and read_frontmatter(short).get("video_id") != video_id:
         base = f"{base} ({video_id})"
         short = vault_dir / f"{base}.md"
-    return short, vault_dir / f"{base}{SUFFIX_TRANSCRIPT}.md", vault_dir / f"{base}{SUFFIX_DEEP_DIVE}.md"
+    return short, vault_dir / f"{base}{SUFFIX_DEEP_DIVE}.md"
 
 
 def render_short_note(rec: VideoRecord, body: str, deep_dive_suggested: bool, day: date,
-                      transcript_name: str, topic: str = "LLM") -> str:
+                      transcript: str, topic: str = "LLM") -> str:
+    """The short note: front matter, summary, then the full transcript as the last section."""
     url = f"https://www.youtube.com/watch?v={rec.video_id}"
     channel = rec.channel_name.replace('"', "'")
     return (
@@ -112,12 +115,16 @@ def render_short_note(rec: VideoRecord, body: str, deep_dive_suggested: bool, da
         f"**Channel**: {rec.channel_name}\n"
         f"**Topic**: {topic}\n\n"
         f"{body.strip()}\n\n"
-        f"Transcript: [[{transcript_name.removesuffix('.md')}]]\n"
+        f"{TRANSCRIPT_HEADING}\n\n{transcript.strip()}\n"
     )
 
 
-def render_transcript(transcript: str) -> str:
-    return f"## Transcript\n\n{transcript}\n"
+def read_transcript(note_text: str) -> str | None:
+    """The transcript saved at the end of a note (after its `## Transcript` heading); None if missing or empty."""
+    m = _TRANSCRIPT_SECTION.search(note_text)
+    if not m:
+        return None
+    return m.group(1).strip() or None
 
 
 def parse_deep_dive_verdict(markdown: str) -> bool:
@@ -142,7 +149,7 @@ def find_deep_dive_requests(vault_dir: Path, cap: int, max_attempts: int = 3) ->
     """
     flagged, suggested = [], []
     for path in vault_dir.glob("*.md"):
-        if path.stem.endswith((SUFFIX_TRANSCRIPT, SUFFIX_DEEP_DIVE)):
+        if path.stem.endswith(SUFFIX_DEEP_DIVE):
             continue
         fm = read_frontmatter(path)
         if "digest_date" not in fm or fm.get("deep_dive_note", "") or deep_dive_attempts(fm) >= max_attempts:

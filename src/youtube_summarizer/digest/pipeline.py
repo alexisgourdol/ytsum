@@ -140,10 +140,9 @@ class _Run:
             except llm.LlmError as e:
                 self.fail(rec, f"summary failed: {e}")
                 continue
-            short, transcript_path, _ = notes.note_paths(cfg.vault_dir, self.day, rec.title, rec.video_id, cfg.topic_tag)
+            short, _ = notes.note_paths(cfg.vault_dir, self.day, rec.title, rec.video_id, cfg.topic_tag)
             suggested = notes.parse_deep_dive_verdict(r.text)
-            transcript_path.write_text(notes.render_transcript(transcript))
-            short.write_text(notes.render_short_note(rec, r.text, suggested, self.day, transcript_path.stem, cfg.topic_tag))
+            short.write_text(notes.render_short_note(rec, r.text, suggested, self.day, transcript, cfg.topic_tag))
             rec.status, rec.reason, rec.note_path = "done", "", str(short)
             st.save_state(self.state)
             duration = notes._duration(rec.duration_s)
@@ -174,12 +173,11 @@ class _Run:
             self.report.failures.append(f"Deep dives: cannot read {cfg.skill_path}: {short_reason(e)}")
             return
         for note in requests:
-            transcript_path = note.with_name(note.stem + notes.SUFFIX_TRANSCRIPT + ".md")
             deep_path = note.with_name(note.stem + notes.SUFFIX_DEEP_DIVE + ".md")
-            if not transcript_path.exists():
+            transcript = notes.read_transcript(note.read_text(errors="ignore"))
+            if transcript is None:
                 self.deep_dive_failed(note, "no saved transcript")
                 continue
-            transcript = transcript_path.read_text().removeprefix("## Transcript").strip()
             fm = notes.read_frontmatter(note)
             try:
                 r = llm.complete(system, transcript, model=cfg.deep_dive_model, mode=cfg.mode,
