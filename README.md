@@ -280,7 +280,7 @@ summary = summarize(transcript, model="anthropic:claude-sonnet-5-5",
 
 ### Daily digest (`digest`)
 
-`youtube-summarizer digest` checks a list of channels for new videos and writes, into an Obsidian folder, a short note and the transcript for each new on-topic video (max 10 per run, 2 per channel) plus one `YYYY-MM-DD digest.md` note listing them. Shorts, livestreams, off-topic and fully sponsored videos are skipped. Tick `deep_dive: true` on a note and the next run adds a full `video-summary` deep dive from the saved transcript.
+`youtube-summarizer digest` checks a list of channels for new videos and writes, into an Obsidian folder, one short note per new on-topic video, with the full transcript as its last section under `## Transcript` (max 10 per run, 2 per channel), plus one `YYYY-MM-DD digest.md` note listing them. Shorts, livestreams, off-topic and fully sponsored videos are skipped. Tick `deep_dive: true` on a note and the next run adds a full `video-summary` deep dive from the note's transcript.
 
 ```bash
 youtube-summarizer digest channels add https://www.youtube.com/@samwitteveenai --bucket vault
