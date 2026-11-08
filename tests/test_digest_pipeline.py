@@ -1,6 +1,7 @@
 """End-to-end digest runs with all network and LLM calls mocked"""
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -353,3 +354,17 @@ def test_deep_dives_still_run_after_a_block(world):
     world.fetch_feed.side_effect = YouTubeBlocked("429")
     report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
     assert report.deep_dives == ["[[2026-10-19 LLM - Old - deep dive]]"]
+
+
+def test_deep_dive_uses_bundled_template_without_skill_path(world, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))  # no ~/.claude/skills here
+    note = world.vault / "2026-10-19 LLM - Old.md"
+    note.write_text('---\nvideo_id: zzzzzzzzzzz\ndigest_date: 2026-10-19\ndeep_dive: true\ndeep_dive_note: ""\n---\n\n# Old\n'
+                    "\n## Summary\n\nShort.\n\n## Transcript\n\nsaved words\n")
+
+    pipeline.run_digest(replace(world.cfg, skill_path=None), NOW, once_per_day=False)
+
+    deep_calls = [c for c in world.complete.call_args_list if c.kwargs["kind"] == "deep_dive"]
+    assert len(deep_calls) == 1
+    assert "Quick Reference" in deep_calls[0].args[0]
+    assert (world.vault / "2026-10-19 LLM - Old - deep dive.md").exists()

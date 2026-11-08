@@ -79,7 +79,7 @@ def test_resolve_not_found(mocker):
 def test_cli_channels_add_dedupes_and_list(mocker, monkeypatch, capsys):
     from youtube_summarizer.digest import cli
     monkeypatch.setenv("YOUTUBE_API_KEY", "k")
-    mocker.patch.object(cli, "load_config", return_value=Config(env_file=Config().env_file.with_name("none")))
+    mocker.patch.object(cli, "load_config", return_value=Config())
     mocker.patch("youtube_summarizer.digest.youtube.api_get",
                  return_value={"items": [{"id": "UCsam", "snippet": {"title": "Sam Witteveen"}}]})
     assert cli.main(["channels", "add", "https://www.youtube.com/@samwitteveenai", "--bucket", "vault"]) == 0
@@ -97,6 +97,6 @@ def test_cli_channels_add_dedupes_and_list(mocker, monkeypatch, capsys):
 def test_cli_channels_add_needs_youtube_key(mocker, monkeypatch, capsys):
     from youtube_summarizer.digest import cli
     monkeypatch.delenv("YOUTUBE_API_KEY", raising=False)
-    mocker.patch.object(cli, "load_config", return_value=Config(env_file=Config().env_file.with_name("none")))
+    mocker.patch.object(cli, "load_config", return_value=Config())
     assert cli.main(["channels", "add", "@x", "--bucket", "news"]) == 1
     assert "YOUTUBE_API_KEY" in capsys.readouterr().out

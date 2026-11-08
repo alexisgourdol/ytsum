@@ -280,23 +280,61 @@ summary = summarize(transcript, model="anthropic:claude-sonnet-5-5",
 
 ### Daily digest (`digest`)
 
-`youtube-summarizer digest` checks a list of channels for new videos and writes, into an Obsidian folder, one short note per new on-topic video, with the full transcript as its last section under `## Transcript` (max 10 per run, 2 per channel), plus one `YYYY-MM-DD digest.md` note listing them. Shorts, livestreams, off-topic and fully sponsored videos are skipped. Tick `deep_dive: true` on a note and the next run adds a full `video-summary` deep dive from the note's transcript.
+`youtube-summarizer digest` checks a list of channels for new videos and writes, into an Obsidian folder, one short note per new on-topic video, with the full transcript as its last section under `## Transcript` (max 10 per run, 2 per channel), plus one `YYYY-MM-DD digest.md` note listing them. Shorts, livestreams, off-topic and fully sponsored videos are skipped. Tick `deep_dive: true` on a note and the next run adds a full deep dive from the note's transcript.
 
 ```bash
 youtube-summarizer digest channels add https://www.youtube.com/@samwitteveenai --bucket vault
 youtube-summarizer digest channels list
 youtube-summarizer digest                    # run now
-youtube-summarizer digest --once-per-day     # what the session-start hook runs
+youtube-summarizer digest --once-per-day     # skip if it already ran today (for schedules)
 youtube-summarizer digest --mode subscription  # summarize with `claude -p` on the Claude subscription
 ```
 
+- **Required setting:** `vault_dir` in `~/.local/share/ytsum/digest/config.toml`, the folder the notes go to (`vault_dir = "/path/to/notes"`). Without it, `digest` stops with an error.
+- **Deep-dive template:** bundled with the package. Set `skill_path` in `config.toml` to use your own file instead.
 - **Keys:** `YOUTUBE_API_KEY` (YouTube Data API v3), and `ANTHROPIC_API_KEY` in `api` mode, from the environment or the `env_file` in `config.toml`.
 - **Settings and state** live in `~/.local/share/ytsum/digest/` (next to the run log): `config.toml` (every key optional: `mode`, models, caps, `vault_dir`, ...), `channels.toml`, `state.json`, `digest.log`.
 - **Modes:** `api` uses pydantic-ai on the Anthropic API; `subscription` runs `claude -p` with no tools and without `ANTHROPIC_API_KEY`, so it bills the Claude plan. Both log every call to the run log (`anthropic:<model>` vs `claude-code:<model>`, with a `kind` of judge / summary / deep_dive), so `--stats` compares them.
 - **Pacing:** a random wait between YouTube requests: `feed_delay_s = [5, 8]` between feeds, `transcript_delay_s = [40, 70]` between transcripts (seconds, set in `config.toml`). A run takes about 10–15 minutes.
-- **YouTube blocks:** a Google `/sorry` redirect, an HTTP 429, a transcript-api `RequestBlocked`/`IpBlocked`, or 3 feeds failing over HTTP in one run stop the run's YouTube requests at once. The video's attempts aren't counted, and the run writes `paused_until`: 2 days, doubling for each block in a row (at most 14), reset by a run without a block. The session-start hook doesn't run before that date; delete the file to resume early.
+- **YouTube blocks:** a Google `/sorry` redirect, an HTTP 429, a transcript-api `RequestBlocked`/`IpBlocked`, or 3 feeds failing over HTTP in one run stop the run's YouTube requests at once. The video's attempts aren't counted, and the run writes `paused_until`: 2 days, doubling for each block in a row (at most 14), reset by a run without a block. `digest` doesn't run before that date; delete the file to resume early.
 - **Channels:** curated by hand. Add one with `digest channels add <URL, @handle or UC… ID> --bucket vault|news|labs|discovery` (the bucket is only a label), remove one by deleting its `[[channel]]` block in `channels.toml`. The digest never searches for, adds or removes channels.
 - **Stale channels:** once every 30 days, the digest note lists channels with no upload for 90 days, from the feeds that run already read (no extra request).
+
+#### Scheduling the digest
+
+Nothing in ytsum runs by itself. Pick one trigger; each calls `youtube-summarizer digest --once-per-day`. The daily stamp, the lock and the pause after a YouTube block make repeated triggers harmless. Use the full path from `which youtube-summarizer`, since schedulers run with a minimal `PATH`, and set the API keys with `env_file` in `config.toml`.
+
+**cron** (`crontab -e`), every morning at 07:30:
+
+```cron
+30 7 * * * /full/path/to/youtube-summarizer digest --once-per-day
+```
+
+**macOS launchd:** save as `~/Library/LaunchAgents/local.ytsum.digest.plist`, then run `launchctl load` on that file. Unlike cron, launchd catches up on a run missed while the Mac was asleep.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>local.ytsum.digest</string>
+  <key>ProgramArguments</key><array>
+    <string>/full/path/to/youtube-summarizer</string>
+    <string>digest</string>
+    <string>--once-per-day</string>
+  </array>
+  <key>StartCalendarInterval</key><dict>
+    <key>Hour</key><integer>7</integer>
+    <key>Minute</key><integer>30</integer>
+  </dict>
+</dict></plist>
+```
+
+**Claude Code SessionStart hook:** runs when you open a session, in the background so the session isn't held up. In `.claude/settings.json`:
+
+```json
+{"hooks": {"SessionStart": [{"hooks": [{"type": "command",
+  "command": "nohup /full/path/to/youtube-summarizer digest --once-per-day >/dev/null 2>&1 &"}]}]}}
+```
 
 ## Development
 

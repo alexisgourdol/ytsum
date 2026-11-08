@@ -63,13 +63,25 @@ def save_state(state: State) -> None:
 
 def pause_after_block(state: State, today: date) -> date:
     """
-    Write paused_until (read by the session-start hook): 2 days after a first block, doubling
+    Write paused_until (see paused_until()): 2 days after a first block, doubling
     for each block in a row, at most MAX_PAUSE_DAYS. The caller saves the state.
     """
     state.block_streak += 1
     until = today + timedelta(days=min(2 ** state.block_streak, MAX_PAUSE_DAYS))
     (data_dir() / "paused_until").write_text(until.isoformat() + "\n")
     return until
+
+
+def paused_until(today: date) -> Optional[date]:
+    """The date in the paused_until file while it's still ahead of today; None otherwise."""
+    path = data_dir() / "paused_until"
+    if not path.exists():
+        return None
+    try:
+        until = date.fromisoformat(path.read_text().strip())
+    except ValueError:
+        return None
+    return until if today < until else None
 
 
 def already_ran_today(today: date) -> bool:

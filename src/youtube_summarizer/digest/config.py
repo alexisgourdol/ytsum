@@ -25,11 +25,10 @@ class Config:
     # Random wait (seconds) between YouTube requests, so the IP isn't blocked (SCP-100).
     feed_delay_s: tuple[float, float] = (5, 8)
     transcript_delay_s: tuple[float, float] = (40, 70)
-    vault_dir: Path = Path("/workspace-external/obsidian-synch/general-kb/01-raw")
+    vault_dir: Optional[Path] = None  # required for a digest run
     topic_tag: str = "LLM"
-    skill_path: Path = Path("~/.claude/skills/video-summary/SKILL.md").expanduser()
-    # Secrets live in the main ytsum checkout, not the .digest-main worktree the job runs from.
-    env_file: Path = Path("/workspace-external/ytsum/.env.local")
+    skill_path: Optional[Path] = None  # replaces the bundled deep-dive template when set
+    env_file: Optional[Path] = None  # dotenv-style file; keys come from the environment otherwise
 
 
 PATH_FIELDS = {"vault_dir", "skill_path", "env_file"}
@@ -71,9 +70,9 @@ def load_config(path: Optional[Path] = None) -> Config:
     return replace(Config(), **values)
 
 
-def load_env_file(path: Path) -> None:
+def load_env_file(path: Optional[Path]) -> None:
     """Set KEY=VALUE lines from a dotenv-style file, never overriding variables already set."""
-    if not path.exists():
+    if path is None or not path.exists():
         return
     for line in path.read_text().splitlines():
         line = line.strip()
