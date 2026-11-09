@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from importlib import resources
 from pathlib import Path
 
 from youtube_summarizer.exporter import sanitize_filename
@@ -164,7 +165,13 @@ def find_deep_dive_requests(vault_dir: Path, cap: int, max_attempts: int = 3) ->
 
 
 def deep_dive_prompt(skill_text: str) -> str:
+    """System prompt from a `skill_path` override, which may describe its own fetch and save steps."""
     return f"{skill_text.rstrip()}\n\nThe transcript is below. Ignore the fetch and save steps; output only the summary markdown."
+
+
+def bundled_deep_dive_prompt() -> str:
+    """The default deep-dive system prompt, shipped inside the package."""
+    return resources.files("youtube_summarizer.digest").joinpath("deep_dive_prompt.md").read_text(encoding="utf-8")
 
 
 @dataclass

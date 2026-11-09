@@ -87,3 +87,12 @@ def test_load_config_delay_bounds(tmp_path):
     path.write_text("feed_delay_s = [9, 2]\n")
     with pytest.raises(ValueError, match="feed_delay_s"):
         load_config(path)
+
+
+def test_defaults_hold_no_personal_paths():
+    cfg = Config()
+    assert cfg.vault_dir is None and cfg.skill_path is None and cfg.env_file is None
+
+
+def test_load_env_file_none_is_noop():
+    load_env_file(None)

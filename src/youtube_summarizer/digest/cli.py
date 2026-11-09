@@ -4,7 +4,8 @@ import argparse
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from youtube_summarizer.digest.config import load_config
+from youtube_summarizer.digest import state as st
+from youtube_summarizer.digest.config import data_dir, load_config
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -14,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--once-per-day", action="store_true",
-        help="Do nothing if the digest already ran today (used by the session-start hook)",
+        help="Do nothing if the digest already ran today (for scheduled runs)",
     )
     parser.add_argument(
         "--mode", choices=["api", "subscription"],
@@ -82,6 +83,13 @@ def main(argv: list[str]) -> int:
     if args.mode:
         cfg = replace(cfg, mode=args.mode)
     now = datetime.now(timezone.utc).astimezone()
+    if cfg.vault_dir is None:
+        print(f"Error: Set vault_dir in {data_dir() / 'config.toml'} (the folder the notes are written to)")
+        return 1
+    until = st.paused_until(now.date())
+    if until:
+        print(f"Digest paused until {until.isoformat()} (delete {data_dir() / 'paused_until'} to resume)")
+        return 0
     report = run_digest(cfg, now, once_per_day=args.once_per_day)
     if report is None:
         print("Digest skipped: already ran today, or another run is in progress.")

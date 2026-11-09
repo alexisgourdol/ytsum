@@ -168,9 +168,10 @@ class _Run:
         if not requests:
             return
         try:
-            system = notes.deep_dive_prompt(cfg.skill_path.read_text())
+            system = (notes.deep_dive_prompt(cfg.skill_path.read_text()) if cfg.skill_path
+                      else notes.bundled_deep_dive_prompt())
         except OSError as e:
-            self.report.failures.append(f"Deep dives: cannot read {cfg.skill_path}: {short_reason(e)}")
+            self.report.failures.append(f"Deep dives: cannot read the template: {short_reason(e)}")
             return
         for note in requests:
             deep_path = note.with_name(note.stem + notes.SUFFIX_DEEP_DIVE + ".md")
