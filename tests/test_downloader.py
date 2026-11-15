@@ -265,6 +265,53 @@ class TestDownloadTranscriptBlocked:
         with pytest.raises(TranscriptBlocked):
             download_transcript("abcdefghijk")
 
+    # The real 2026-11-15 error: urllib3/requests split host and path, so "google.com/sorry" never appears
+    SORRY = ("HTTPSConnectionPool(host='www.google.com', port=443): Max retries exceeded with url: "
+             "/sorry/index?continue=https://www.youtube.com/watch%3Fv%3Dabcdefghijk")
+
+    def test_urllib3_sorry_message_is_a_block(self, mocker):
+        import requests
+        import youtube_transcript_api as yta
+        from youtube_summarizer.downloader import TranscriptBlocked
+        mocker.patch.object(yta.YouTubeTranscriptApi, "list", side_effect=requests.exceptions.ConnectionError(self.SORRY))
+        with pytest.raises(TranscriptBlocked):
+            download_transcript("abcdefghijk")
+
+    def test_sorry_as_cause_is_a_block(self, mocker):
+        import requests
+        import youtube_transcript_api as yta
+        from youtube_summarizer.downloader import TranscriptBlocked
+
+        def wrapped(*args, **kwargs):
+            try:
+                raise requests.exceptions.ConnectionError(self.SORRY)
+            except requests.exceptions.ConnectionError as e:
+                raise RuntimeError("could not retrieve transcript") from e
+
+        mocker.patch.object(yta.YouTubeTranscriptApi, "list", side_effect=wrapped)
+        with pytest.raises(TranscriptBlocked):
+            download_transcript("abcdefghijk")
+
+    def test_plain_connection_error_is_not_a_block(self, mocker):
+        import requests
+        import youtube_transcript_api as yta
+        from youtube_summarizer.downloader import TranscriptBlocked
+        msg = "HTTPSConnectionPool(host='www.youtube.com', port=443): Max retries exceeded with url: /api/timedtext"
+        mocker.patch.object(yta.YouTubeTranscriptApi, "list", side_effect=requests.exceptions.ConnectionError(msg))
+        with pytest.raises(TranscriptError) as info:
+            download_transcript("abcdefghijk")
+        assert not isinstance(info.value, TranscriptBlocked)
+
+    def test_cyclic_exception_chain_does_not_hang(self, mocker):
+        import youtube_transcript_api as yta
+        from youtube_summarizer.downloader import TranscriptBlocked
+        a, b = ValueError("a"), ValueError("b")
+        a.__context__, b.__context__ = b, a
+        mocker.patch.object(yta.YouTubeTranscriptApi, "list", side_effect=a)
+        with pytest.raises(TranscriptError) as info:
+            download_transcript("abcdefghijk")
+        assert not isinstance(info.value, TranscriptBlocked)
+
     def test_other_errors_stay_transcript_errors(self, mocker):
         import youtube_transcript_api as yta
         from youtube_summarizer.downloader import TranscriptBlocked
