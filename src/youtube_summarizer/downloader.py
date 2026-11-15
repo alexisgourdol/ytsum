@@ -45,6 +45,25 @@ class TranscriptBlocked(TranscriptError):
     """YouTube is blocking this IP (HTTP 429, Google /sorry page): nothing to do with the video."""
 
 
+def _is_block(e: BaseException) -> bool:
+    """True if `e`, or any exception chained to it, says YouTube is blocking this IP.
+
+    A block is a `RequestBlocked` (IpBlocked, HTTP 429, is a subclass) or a redirect to Google's
+    /sorry page. urllib3/requests split that URL into host and path
+    ("host='www.google.com' ... url: /sorry/..."), so both are looked for separately.
+    """
+    from youtube_transcript_api import RequestBlocked
+
+    seen = set()
+    while e is not None and id(e) not in seen:
+        seen.add(id(e))
+        msg = str(e)
+        if isinstance(e, RequestBlocked) or ("google.com" in msg and "/sorry" in msg):
+            return True
+        e = e.__cause__ or e.__context__
+    return False
+
+
 def download_transcript(video_id: str, languages: list = None) -> str:
     """
     Download transcript for a YouTube video.
@@ -107,8 +126,7 @@ def download_transcript(video_id: str, languages: list = None) -> str:
         return format_transcript(transcript_data.to_raw_data())
 
     except Exception as e:
-        from youtube_transcript_api import RequestBlocked  # IpBlocked (HTTP 429) is a subclass
-        if isinstance(e, RequestBlocked) or "google.com/sorry" in str(e):
+        if _is_block(e):
             raise TranscriptBlocked(f"YouTube is blocking transcript requests ({video_id}): {e}") from e
         raise TranscriptError(f"Error downloading transcript for {video_id}: {e}") from e
 

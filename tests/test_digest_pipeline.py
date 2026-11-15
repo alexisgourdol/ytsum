@@ -308,6 +308,23 @@ def test_transcript_block_leaves_attempts_unchanged(world):
     assert _paused_until() == "2026-10-23"
 
 
+def test_real_sorry_error_stops_and_pauses(world, mocker):
+    """SCP-129: the real urllib3 /sorry message, through the real download_transcript, stops the run"""
+    import requests
+    import youtube_transcript_api as yta
+    from youtube_summarizer.downloader import download_transcript
+    sorry = ("HTTPSConnectionPool(host='www.google.com', port=443): Max retries exceeded with url: "
+             "/sorry/index?continue=https://www.youtube.com/watch%3Fv%3Daaaaaaaaaa1")
+    api_list = mocker.patch.object(yta.YouTubeTranscriptApi, "list",
+                                   side_effect=requests.exceptions.ConnectionError(sorry))
+    world.download.side_effect = download_transcript
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert api_list.call_count == 1  # stopped at the first block
+    assert "(step: transcripts" in _digest(world)
+    assert _paused_until() == "2026-10-23"
+    assert st.load_state().block_streak == 1
+
+
 def test_run_never_searches_or_judges_channels(world):
     report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
     world.api_get.assert_not_called()  # no YouTube search for new channels
