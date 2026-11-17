@@ -1,0 +1,22 @@
+flowchart TD
+  START([You or a daily schedule<br/>run the digest<br/>API or subscription mode]) --> PAUSED{Paused after<br/>a YouTube block?}
+  PAUSED -->|yes| STOP([Stop until<br/>the pause date])
+  PAUSED -->|no| FEEDS[Read new videos<br/>from channel feeds]
+  FEEDS --> FILTER[Skip shorts, livestreams<br/>and old videos]
+  FILTER --> JUDGE{Claude: on topic<br/>and not sponsored?}
+  JUDGE -->|no| SKIP([Skipped])
+  JUDGE -->|yes| TR[Download transcript]
+  TR --> SHORT[Claude writes<br/>a short note]
+  SHORT --> DIGEST[Digest note lists<br/>the day's videos]
+  DIGEST --> READ([You read the notes<br/>in Obsidian])
+  READ -->|tick deep_dive| DEEP[Next run: Claude<br/>writes a deep dive]
+  classDef you fill:#a5d8ff,stroke:#1971c2
+  classDef code fill:#fff3bf,stroke:#f08c00
+  classDef ai fill:#d0bfff,stroke:#6741d9
+  classDef out fill:#b2f2bb,stroke:#2f9e44
+  classDef stop fill:#ffc9c9,stroke:#e03131
+  class START,READ you
+  class FEEDS,FILTER,TR code
+  class JUDGE,SHORT,DEEP ai
+  class DIGEST out
+  class STOP,SKIP stop

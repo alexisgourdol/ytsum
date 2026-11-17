@@ -26,6 +26,13 @@ This is another attempt, this time using
 - CLI and library usage
 
 
+## Architecture
+
+![How ytsum is built](docs/architecture/technical.png)
+
+The technical view above shows the parts and what they call; the [process view](docs/architecture/process.png) follows one digest run, from the trigger to the notes. Each diagram is a Mermaid source (`docs/architecture/*.mmd`) rendered to an editable Excalidraw scene (`*.excalidraw`) and a PNG. Edit the `.mmd`, then re-render.
+
+
 ## Prerequisites
 
 - Python 3.11+

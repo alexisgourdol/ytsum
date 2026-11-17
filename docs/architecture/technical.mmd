@@ -1,0 +1,21 @@
+flowchart LR
+  U([You, a scheduler<br/>or an AI agent]) --> CLI[youtube-summarizer<br/>CLI]
+  CLI -->|one video| DL[Transcript<br/>download]
+  CLI -->|digest| DG[Digest<br/>pipeline]
+  YT[YouTube<br/>feeds and transcripts] -.-> DL
+  YT -.-> DG
+  DL --> SUM[Summarizer<br/>Pydantic AI]
+  SUM --> NOTE[Markdown notes<br/>Obsidian folder]
+  DG --> NOTE
+  SUM -.- LLM[Claude, OpenAI,<br/>Gemini or Ollama]
+  DG -.- CL[Claude: API key<br/>or claude -p]
+  classDef you fill:#a5d8ff,stroke:#1971c2
+  classDef code fill:#fff3bf,stroke:#f08c00
+  classDef ext fill:#ffd8a8,stroke:#e8590c
+  classDef ai fill:#d0bfff,stroke:#6741d9
+  classDef out fill:#b2f2bb,stroke:#2f9e44
+  class U you
+  class CLI,DL,DG,SUM code
+  class YT ext
+  class LLM,CL ai
+  class NOTE out
