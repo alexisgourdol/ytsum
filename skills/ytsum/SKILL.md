@@ -1,6 +1,6 @@
 ---
 name: ytsum
-description: Download and summarize YouTube transcripts, or run a daily digest of new videos from a list of channels, with the youtube-summarizer CLI. Use when asked to summarize a YouTube video, fetch its transcript, or set up or run a video digest.
+description: Download and summarize YouTube transcripts, or run a weekly digest of new videos from a list of channels, with the youtube-summarizer CLI. Use when asked to summarize a YouTube video, fetch its transcript, or set up or run a video digest.
 ---
 
 # ytsum
@@ -47,4 +47,4 @@ The digest writes one short note per new on-topic video into a folder of markdow
 
 A run takes about 10–15 minutes because it paces its YouTube requests. To get a full deep dive, set `deep_dive: true` in a note's frontmatter; the next run writes it.
 
-For a daily schedule, use `youtube-summarizer digest --once-per-day` (recipes in the project README under "Scheduling the digest"). If the digest says it's paused, YouTube blocked this IP: wait for the date it prints.
+For a weekly schedule, use `youtube-summarizer digest --once-per-week` (recipes in the project README under "Scheduling the digest"). If the digest says it's paused, YouTube blocked this IP: wait for the date it prints.

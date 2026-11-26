@@ -1,4 +1,4 @@
-"""Tests for digest state, daily stamp and lock"""
+"""Tests for digest state, run stamp and lock"""
 
 import os
 import time
@@ -43,10 +43,21 @@ def test_save_is_atomic():
 
 def test_stamp_once_per_day():
     today = date(2026, 10, 21)
-    assert not st.already_ran_today(today)
-    st.mark_ran_today(today)
-    assert st.already_ran_today(today)
-    assert not st.already_ran_today(date(2026, 10, 22))
+    assert not st.ran_within(today, 1)
+    st.mark_ran(today)
+    assert st.ran_within(today, 1)
+    assert not st.ran_within(date(2026, 10, 22), 1)
+
+
+def test_stamp_once_per_week():
+    st.mark_ran(date(2026, 10, 21))
+    assert st.ran_within(date(2026, 10, 27), 7)  # 6 days later
+    assert not st.ran_within(date(2026, 10, 28), 7)  # 7 days later
+
+
+def test_unreadable_stamp_counts_as_never_ran():
+    (data_dir() / "last_run_date").write_text("garbage")
+    assert not st.ran_within(date(2026, 10, 21), 7)
 
 
 def test_lock_exclusive():

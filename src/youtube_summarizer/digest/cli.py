@@ -13,9 +13,14 @@ def build_parser() -> argparse.ArgumentParser:
         prog="youtube-summarizer digest",
         description="Summarize new videos from the channel list into the Obsidian vault",
     )
-    parser.add_argument(
+    once = parser.add_mutually_exclusive_group()
+    once.add_argument(
         "--once-per-day", action="store_true",
         help="Do nothing if the digest already ran today (for scheduled runs)",
+    )
+    once.add_argument(
+        "--once-per-week", action="store_true",
+        help="Do nothing if the digest ran in the last 7 days (for scheduled runs)",
     )
     parser.add_argument(
         "--mode", choices=["api", "subscription"],
@@ -90,9 +95,9 @@ def main(argv: list[str]) -> int:
     if until:
         print(f"Digest paused until {until.isoformat()} (delete {data_dir() / 'paused_until'} to resume)")
         return 0
-    report = run_digest(cfg, now, once_per_day=args.once_per_day)
+    report = run_digest(cfg, now, once_per_day=args.once_per_day, once_per_week=args.once_per_week)
     if report is None:
-        print("Digest skipped: already ran today, or another run is in progress.")
+        print("Digest skipped: already ran in this period, or another run is in progress.")
         return 0
     print(f"Digest written to {cfg.vault_dir / (now.date().isoformat() + ' digest.md')}")
     if report.fatal:

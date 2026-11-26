@@ -130,7 +130,8 @@ class _Run:
 
     def summarize(self) -> None:
         cfg = self.cfg
-        for rec in select.pick(self.state, cfg, require_judged=True):
+        picked = select.pick(self.state, cfg, require_judged=True)
+        for rec in picked:
             transcript = self.transcript(rec)
             if transcript is None:
                 continue
@@ -148,9 +149,10 @@ class _Run:
             duration = notes._duration(rec.duration_s)
             self.report.new.append(
                 f"[[{short.stem}]] · {rec.channel_name} · {duration} · deep dive: {'yes' if suggested else 'no'}")
-        for rec in select.eligible(self.state, cfg):
-            if rec.judged:
-                self.report.carried_over.append(_label(rec))
+        # Only reached without a YouTube block: a blocked run drops nothing.
+        for rec in select.drop_unpicked(self.state, picked, cfg):
+            self.report.over_cap.append(f"{_label(rec)} ({_url(rec.video_id)})")
+        st.save_state(self.state)
 
     def deep_dive_failed(self, note: Path, reason: str) -> None:
         reason = short_reason(reason)
@@ -218,15 +220,20 @@ def _setup_logging() -> None:
     log.setLevel(logging.INFO)
 
 
-def run_digest(cfg: Config, now: datetime, *, once_per_day: bool) -> Optional[DigestReport]:
-    """Run once; None if skipped (already ran today, or another run holds the lock)."""
-    if once_per_day and st.already_ran_today(now.date()):
+def run_digest(cfg: Config, now: datetime, *, once_per_day: bool = False,
+               once_per_week: bool = False) -> Optional[DigestReport]:
+    """
+    Run once; None if skipped (already ran today with once_per_day, within the last
+    7 days with once_per_week, or another run holds the lock).
+    """
+    interval = 7 if once_per_week else 1 if once_per_day else 0
+    if interval and st.ran_within(now.date(), interval):
         return None
     with st.acquire_lock() as got:
         if not got:
             return None
-        if once_per_day:
-            st.mark_ran_today(now.date())
+        if interval:
+            st.mark_ran(now.date())
         return _run_locked(cfg, now)
 
 

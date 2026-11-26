@@ -1,4 +1,4 @@
-"""Tests for selection: first-run window, caps, carry-over, retries, expiry"""
+"""Tests for selection: 7-day window, caps, dropping the rest, retries, expiry"""
 
 from datetime import datetime, timedelta, timezone
 
@@ -18,22 +18,31 @@ def _entry(video_id, channel="UC1", days_ago=0.5, hours=0):
     return FeedEntry(video_id, channel, f"name-{channel}", f"title-{video_id}", _iso(days_ago, hours), "")
 
 
-def test_first_run_window():
-    state = State()
-    added = sel.register_new(state, [_entry("old", days_ago=3), _entry("new", days_ago=1)], NOW, Config())
+def test_videos_older_than_max_age_are_skipped_when_first_seen():
+    """SCP-200: the run after a pause, or a new channel, only takes the last 7 days."""
+    state = State(first_run_done=True)
+    added = sel.register_new(state, [_entry("old", days_ago=8), _entry("new", days_ago=6),
+                                     _entry("other", channel="UC2", days_ago=10)], NOW, Config())
     assert [r.video_id for r in added] == ["new"]
-    assert state.videos["old"].status == "skipped"
-    assert state.videos["old"].reason == "before first run"
+    assert state.videos["old"].status == "skipped" and state.videos["other"].status == "skipped"
+    assert state.videos["old"].reason == "published over 7 days before it was first seen"
     assert state.videos["new"].status == "pending"
+    assert sel.drop_expired(state, NOW, Config()) == []  # skipped, not dumped into "Dropped"
 
 
-def test_register_new_ignores_known_and_has_no_window_for_seen_channels():
-    state = State(first_run_done=True, seen_channels=["UC1"])
+def test_register_new_ignores_known_videos():
+    state = State(first_run_done=True)
     sel.register_new(state, [_entry("a", days_ago=5)], NOW, Config())
     state.videos["a"].status = "done"
     added = sel.register_new(state, [_entry("a", days_ago=5), _entry("b", days_ago=5)], NOW, Config())
     assert [r.video_id for r in added] == ["b"]
     assert state.videos["a"].status == "done"
+
+
+def test_max_age_days_is_configurable():
+    state = State()
+    added = sel.register_new(state, [_entry("a", days_ago=3)], NOW, Config(max_age_days=2))
+    assert added == [] and state.videos["a"].status == "skipped"
 
 
 def test_per_channel_and_daily_caps():
@@ -51,17 +60,27 @@ def test_per_channel_and_daily_caps():
     assert published == sorted(published, reverse=True)
 
 
-def test_carry_over():
+def test_drop_unpicked_drops_judged_pending_videos_only():
+    """SCP-200: nothing carries over; judged videos past the caps are dropped."""
+    cfg = Config(daily_cap=2, max_attempts=3)
     state = State(first_run_done=True)
-    sel.register_new(state, [_entry(f"v{i}", channel=f"UC{i}", hours=i) for i in range(4)], NOW, Config())
-    picked = sel.pick(state, Config(daily_cap=2))
-    rest = [r for r in state.videos.values() if r not in picked]
-    assert len(rest) == 2 and all(r.status == "pending" for r in rest)
+    sel.register_new(state, [_entry(f"v{i}", channel=f"UC{i}", hours=i) for i in range(5)], NOW, cfg)
+    for vid in ("v0", "v1", "v2", "v3"):
+        state.videos[vid].judged = True
+    sel.record_failure(state.videos["v3"], "no captions", cfg)  # failed, attempts left: retried later
+    picked = sel.pick(state, cfg, require_judged=True)
+    assert [r.video_id for r in picked] == ["v0", "v1"]
+    dropped = sel.drop_unpicked(state, picked, cfg)
+    assert [r.video_id for r in dropped] == ["v2"]
+    assert state.videos["v2"].status == "dropped"
+    assert state.videos["v3"].status == "failed"  # failed with attempts left: not dropped
+    assert state.videos["v4"].status == "pending"  # never judged (Data API failure): not dropped
+    assert sel.drop_unpicked(state, picked, cfg) == []  # reported once
 
 
 def test_drop_after_14_days():
-    state = State(first_run_done=True, seen_channels=["UC1"])
-    sel.register_new(state, [_entry("stale", days_ago=15), _entry("fresh", days_ago=2)], NOW, Config())
+    state = State(first_run_done=True)
+    sel.register_new(state, [_entry("stale", days_ago=15), _entry("fresh", days_ago=2)], NOW, Config(max_age_days=30))
     dropped = sel.drop_expired(state, NOW, Config())
     assert [r.video_id for r in dropped] == ["stale"]
     assert state.videos["stale"].status == "dropped"
@@ -79,15 +98,3 @@ def test_retry_then_give_up():
         sel.record_failure(rec, "no captions", cfg)
     assert rec.status == "given_up" and rec.attempts == 3 and rec.reason == "no captions"
     assert sel.pick(state, cfg) == []
-
-
-def test_window_applies_to_a_channel_seen_for_the_first_time_later():
-    """A channel added after the first run (digest channels add) doesn't flood the digest."""
-    state = State(first_run_done=True, seen_channels=["UC1"])
-    added = sel.register_new(state, [_entry("old-new-channel", channel="UCnew", days_ago=40),
-                                     _entry("fresh-new-channel", channel="UCnew", days_ago=1),
-                                     _entry("old-known-channel", channel="UC1", days_ago=5)], NOW, Config())
-    assert sorted(r.video_id for r in added) == ["fresh-new-channel", "old-known-channel"]
-    assert state.videos["old-new-channel"].status == "skipped"
-    assert "UCnew" in state.seen_channels
-    assert sel.drop_expired(state, NOW, Config()) == []  # skipped, not dumped into "Dropped"

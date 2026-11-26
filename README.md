@@ -285,15 +285,18 @@ summary = summarize(transcript, model="anthropic:claude-sonnet-5-5",
 ```
 
 
-### Daily digest (`digest`)
+### Weekly digest (`digest`)
 
 `youtube-summarizer digest` checks a list of channels for new videos and writes, into an Obsidian folder, one short note per new on-topic video, with the full transcript as its last section under `## Transcript` (max 10 per run, 2 per channel), plus one `YYYY-MM-DD digest.md` note listing them. Shorts, livestreams, off-topic and fully sponsored videos are skipped. Tick `deep_dive: true` on a note and the next run adds a full deep dive from the note's transcript.
+
+Nothing carries over: each run picks the 10 newest on-topic videos and drops the others, listed by title and link under "Skipped this week" in the digest note. A video published more than 7 days before a run first sees it (`max_age_days` in `config.toml`) is skipped, so the run after a pause, or a newly added channel, covers the last week only. Videos the judge couldn't see (YouTube Data API error) and failed transcripts with attempts left wait for the next run.
 
 ```bash
 youtube-summarizer digest channels add https://www.youtube.com/@samwitteveenai --bucket vault
 youtube-summarizer digest channels list
 youtube-summarizer digest                    # run now
-youtube-summarizer digest --once-per-day     # skip if it already ran today (for schedules)
+youtube-summarizer digest --once-per-week    # skip if it ran in the last 7 days (for schedules)
+youtube-summarizer digest --once-per-day     # skip if it already ran today
 youtube-summarizer digest --mode subscription  # summarize with `claude -p` on the Claude subscription
 ```
 
@@ -309,12 +312,12 @@ youtube-summarizer digest --mode subscription  # summarize with `claude -p` on t
 
 #### Scheduling the digest
 
-Nothing in ytsum runs by itself. Pick one trigger; each calls `youtube-summarizer digest --once-per-day`. The daily stamp, the lock and the pause after a YouTube block make repeated triggers harmless. Use the full path from `which youtube-summarizer`, since schedulers run with a minimal `PATH`, and set the API keys with `env_file` in `config.toml`.
+Nothing in ytsum runs by itself. Pick one trigger; each calls `youtube-summarizer digest --once-per-week`, which runs at most once every 7 days and does nothing otherwise. The last-run stamp, the lock and the pause after a YouTube block make repeated triggers harmless. Use the full path from `which youtube-summarizer`, since schedulers run with a minimal `PATH`, and set the API keys with `env_file` in `config.toml`.
 
-**cron** (`crontab -e`), every morning at 07:30:
+**cron** (`crontab -e`), Mondays at 07:30:
 
 ```cron
-30 7 * * * /full/path/to/youtube-summarizer digest --once-per-day
+30 7 * * 1 /full/path/to/youtube-summarizer digest --once-per-week
 ```
 
 **macOS launchd:** save as `~/Library/LaunchAgents/local.ytsum.digest.plist`, then run `launchctl load` on that file. Unlike cron, launchd catches up on a run missed while the Mac was asleep.
@@ -327,20 +330,21 @@ Nothing in ytsum runs by itself. Pick one trigger; each calls `youtube-summarize
   <key>ProgramArguments</key><array>
     <string>/full/path/to/youtube-summarizer</string>
     <string>digest</string>
-    <string>--once-per-day</string>
+    <string>--once-per-week</string>
   </array>
   <key>StartCalendarInterval</key><dict>
+    <key>Weekday</key><integer>1</integer>
     <key>Hour</key><integer>7</integer>
     <key>Minute</key><integer>30</integer>
   </dict>
 </dict></plist>
 ```
 
-**Claude Code SessionStart hook:** runs when you open a session, in the background so the session isn't held up. In `.claude/settings.json`:
+**Claude Code SessionStart hook:** runs when you open a session, in the background so the session isn't held up; `--once-per-week` makes every other session that week a no-op. In `.claude/settings.json`:
 
 ```json
 {"hooks": {"SessionStart": [{"hooks": [{"type": "command",
-  "command": "nohup /full/path/to/youtube-summarizer digest --once-per-day >/dev/null 2>&1 &"}]}]}}
+  "command": "nohup /full/path/to/youtube-summarizer digest --once-per-week >/dev/null 2>&1 &"}]}]}}
 ```
 
 ## Development

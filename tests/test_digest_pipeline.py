@@ -136,6 +136,13 @@ def test_once_per_day_skips_second_run(world):
     assert pipeline.run_digest(world.cfg, NOW, once_per_day=False) is not None
 
 
+def test_once_per_week_skips_runs_within_7_days(world):
+    assert pipeline.run_digest(world.cfg, NOW, once_per_week=True) is not None
+    assert pipeline.run_digest(world.cfg, NOW + timedelta(days=6), once_per_week=True) is None
+    assert pipeline.run_digest(world.cfg, NOW + timedelta(days=7), once_per_week=True) is not None
+    assert st.ran_within((NOW + timedelta(days=7)).date(), 1)
+
+
 def test_lock_held_skips(world):
     with st.acquire_lock():
         assert pipeline.run_digest(world.cfg, NOW, once_per_day=False) is None
@@ -158,15 +165,58 @@ def test_deep_dive_uses_saved_transcript(world):
     assert read_frontmatter(note)["deep_dive_note"] == "[[2026-10-19 LLM - Old - deep dive]]"
 
 
-def test_carried_over_videos_are_not_rejudged(world):
-    pipeline.run_digest(world.cfg, NOW, once_per_day=False)  # judges and summarizes everything
-    world.feeds["UCa"] += [_entry(f"cccccccccc{i}", "UCa", 0.5) for i in range(3)]
+def _twelve_new_videos(world):
+    """12 on-topic videos on 6 channels (2 each, so the per-channel cap never bites)."""
+    world.feeds.clear()
+    chans = [f"UC{i}" for i in range(6)]
+    ch.save_channels([ch.Channel(c, f"Chan {c}", "vault") for c in chans])
+    for n, c in enumerate(chans):
+        world.feeds[c] = [_entry(f"{c}-video{k}", c, 1 + n * 2 + k) for k in range(2)]
     world.fetch_meta.side_effect = lambda ids, api_key: {i: VideoMeta(i, 1500, False, 1) for i in ids}
-    pipeline.run_digest(world.cfg, NOW, once_per_day=False)  # 3 new, cap 2 per channel → 1 carried
+
+
+def test_over_ten_videos_ten_summarized_rest_dropped_and_listed(world):
+    """SCP-200: top 10 per run, the rest dropped and listed, nothing carries over."""
+    _twelve_new_videos(world)
+    report = pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    assert len(report.new) == 10 and world.download.call_count == 10
+    state = st.load_state()
+    dropped = sorted(v for v, r in state.videos.items() if r.status == "dropped")
+    assert dropped == ["UC5-video0", "UC5-video1"]  # the two oldest
+    digest = _digest(world)
+    assert "## Skipped this week" in digest
+    assert "Video UC5-video0 · Chan UC5 (https://www.youtube.com/watch?v=UC5-video0)" in digest
+    assert "Carried over" not in digest
+
     world.complete.reset_mock()
+    world.download.reset_mock()
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)  # next run: nothing left to summarize
+    world.download.assert_not_called()
+
+
+def test_block_mid_run_drops_nothing(world):
+    _twelve_new_videos(world)
+    calls = {"n": 0}
+
+    def blocked_on_third(vid):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise TranscriptBlocked("IpBlocked")
+        return f"transcript of {vid}"
+
+    world.download.side_effect = blocked_on_third
     pipeline.run_digest(world.cfg, NOW, once_per_day=False)
-    kinds = [c.kwargs["kind"] for c in world.complete.call_args_list]
-    assert kinds == ["summary"]
+    state = st.load_state()
+    assert not [v for v, r in state.videos.items() if r.status == "dropped"]
+    assert sum(r.status == "pending" for r in state.videos.values()) == 10
+    assert "Skipped this week" not in _digest(world)
+
+
+def test_judge_failure_leaves_videos_waiting(world):
+    world.fetch_meta.side_effect = pipeline.youtube.YouTubeApiError("quota exceeded")
+    pipeline.run_digest(world.cfg, NOW, once_per_day=False)
+    state = st.load_state()
+    assert all(r.status == "pending" and not r.judged for r in state.videos.values())
 
 
 def test_missing_api_key_writes_fatal_digest(world, monkeypatch):
@@ -217,6 +267,8 @@ def test_cli_runs_pipeline_and_reports_fatal(world, monkeypatch, mocker, capsys)
     assert cli.main([]) == 1
     assert cli.main(["--once-per-day"]) == 1
     assert cli.main(["--once-per-day"]) == 0  # second run today is skipped
+    assert "skipped" in capsys.readouterr().out
+    assert cli.main(["--once-per-week"]) == 0  # ran today: within the week too
     assert "skipped" in capsys.readouterr().out
 
 
