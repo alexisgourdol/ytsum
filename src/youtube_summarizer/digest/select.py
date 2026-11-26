@@ -1,4 +1,4 @@
-"""Which videos get summarized this run: new ones, carried-over ones and retries, within the caps."""
+"""Which videos get summarized this run (new ones and retries, within the caps) and which are dropped."""
 
 from datetime import datetime, timedelta
 
@@ -13,23 +13,20 @@ def _published(rec_or_entry) -> datetime:
 
 def register_new(state: State, entries: list[FeedEntry], now: datetime, cfg: Config) -> list[VideoRecord]:
     """
-    Add unseen videos as pending. The first time a channel's feed is read (first run,
-    or a channel added later), only videos from the last first_run_days are taken;
-    older ones are marked skipped, so a new channel never floods the digest.
+    Add unseen videos as pending. Videos published more than max_age_days ago are
+    marked skipped instead, so the run after a pause or a new channel never floods the digest.
     """
     added = []
-    cutoff = now - timedelta(days=cfg.first_run_days)
-    new_channels = {e.channel_id for e in entries} - set(state.seen_channels)
+    cutoff = now - timedelta(days=cfg.max_age_days)
     for e in entries:
         if e.video_id in state.videos:
             continue
         rec = VideoRecord(e.video_id, e.channel_id, e.channel_name, e.title, e.published, "pending")
-        if e.channel_id in new_channels and _published(e) < cutoff:
-            rec.status, rec.reason = "skipped", "before first run"
+        if _published(e) < cutoff:
+            rec.status, rec.reason = "skipped", f"published over {cfg.max_age_days} days before it was first seen"
         else:
             added.append(rec)
         state.videos[e.video_id] = rec
-    state.seen_channels.extend(sorted(new_channels))
     return added
 
 
@@ -65,6 +62,20 @@ def pick(state: State, cfg: Config, require_judged: bool = False) -> list[VideoR
         per_channel[rec.channel_id] = per_channel.get(rec.channel_id, 0) + 1
         picked.append(rec)
     return picked
+
+
+def drop_unpicked(state: State, picked: list[VideoRecord], cfg: Config) -> list[VideoRecord]:
+    """
+    Mark judged, pending videos this run didn't pick as dropped: nothing carries over (SCP-200).
+    Unjudged videos and failed ones with attempts left keep waiting.
+    """
+    picked_ids = {r.video_id for r in picked}
+    dropped = []
+    for rec in state.videos.values():
+        if rec.status == "pending" and rec.judged and rec.video_id not in picked_ids:
+            rec.status, rec.reason = "dropped", f"not in this run's top {cfg.daily_cap}"
+            dropped.append(rec)
+    return dropped
 
 
 def record_failure(rec: VideoRecord, reason: str, cfg: Config) -> None:

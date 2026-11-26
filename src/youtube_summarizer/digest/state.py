@@ -1,4 +1,4 @@
-"""Digest state (videos seen, pending, failed), the once-per-day stamp and the run lock."""
+"""Digest state (videos seen, pending, failed), the last-run stamp and the run lock."""
 
 import json
 import os
@@ -34,8 +34,6 @@ class State:
     videos: dict[str, VideoRecord] = field(default_factory=dict)
     first_run_done: bool = False
     last_stale_check: str = ""  # ISO date of the last monthly stale-channel check
-    # Channels whose feed was read at least once; a channel's first read only takes recent videos.
-    seen_channels: list[str] = field(default_factory=list)
     # Runs in a row stopped by a YouTube block; sets the length of the pause.
     block_streak: int = 0
 
@@ -49,7 +47,6 @@ def load_state() -> State:
     return State(videos=videos, first_run_done=raw.get("first_run_done", False),
                  # last_refresh: the channel auto-refresh date, before SCP-78 removed it
                  last_stale_check=raw.get("last_stale_check", raw.get("last_refresh", "")),
-                 seen_channels=raw.get("seen_channels", []),
                  block_streak=raw.get("block_streak", 0))
 
 
@@ -84,12 +81,16 @@ def paused_until(today: date) -> Optional[date]:
     return until if today < until else None
 
 
-def already_ran_today(today: date) -> bool:
-    path = data_dir() / "last_run_date"
-    return path.exists() and path.read_text().strip() == today.isoformat()
+def ran_within(today: date, days: int) -> bool:
+    """True if the last stamped run was less than `days` days before today (1: today)."""
+    try:
+        last = date.fromisoformat((data_dir() / "last_run_date").read_text().strip())
+    except (OSError, ValueError):
+        return False
+    return (today - last).days < days
 
 
-def mark_ran_today(today: date) -> None:
+def mark_ran(today: date) -> None:
     (data_dir() / "last_run_date").write_text(today.isoformat())
 
 

@@ -179,7 +179,7 @@ class DigestReport:
     new: list[str] = field(default_factory=list)
     deep_dives: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
-    carried_over: list[str] = field(default_factory=list)
+    over_cap: list[str] = field(default_factory=list)  # judged but not picked: dropped
     failures: list[str] = field(default_factory=list)
     given_up: list[str] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
@@ -202,7 +202,7 @@ def render_digest(report: DigestReport, day: date) -> str:
         ("New videos", report.new),
         ("Deep dives written", report.deep_dives),
         ("Skipped", report.skipped),
-        ("Carried over to tomorrow", report.carried_over),
+        ("Skipped this week", report.over_cap),
         ("Failures (retried next run)", report.failures),
         ("Given up", report.given_up),
         ("Dropped (waited over 14 days)", report.dropped),

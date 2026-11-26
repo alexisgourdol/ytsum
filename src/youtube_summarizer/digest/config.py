@@ -15,11 +15,12 @@ class Config:
     judge_model: str = "claude-haiku-5-5"
     summary_model: str = "claude-haiku-5-5"
     deep_dive_model: str = "claude-sonnet-5-5"
-    daily_cap: int = 10
+    daily_cap: int = 10  # videos summarized per run
     per_channel_cap: int = 2
     deep_dive_cap: int = 3
     shorts_max_seconds: int = 180
-    first_run_days: int = 2
+    # A video first seen more than this many days after it was published is skipped (SCP-200).
+    max_age_days: int = 7
     pending_max_days: int = 14
     max_attempts: int = 3
     # Random wait (seconds) between YouTube requests, so the IP isn't blocked (SCP-100).
@@ -33,8 +34,9 @@ class Config:
 
 PATH_FIELDS = {"vault_dir", "skill_path", "env_file"}
 DELAY_FIELDS = {"feed_delay_s", "transcript_delay_s"}
-# Keys older config files may still set; ignored. refresh_days went with the channel auto-refresh (SCP-78).
-RETIRED_FIELDS = {"refresh_days"}
+# Keys older config files may still set; ignored. refresh_days went with the channel auto-refresh (SCP-78),
+# first_run_days gave way to max_age_days (SCP-200).
+RETIRED_FIELDS = {"refresh_days", "first_run_days"}
 
 
 def data_dir() -> Path:

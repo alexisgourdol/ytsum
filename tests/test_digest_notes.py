@@ -111,7 +111,7 @@ def test_render_digest_sections_and_order():
     text = nt.render_digest(report, DAY)
     order = [text.index(h) for h in ["Stale channels", "New videos", "Skipped", "Failures", "Usage"]]
     assert order == sorted(order)
-    assert "Carried over" not in text  # empty sections omitted
+    assert "Skipped this week" not in text  # empty sections omitted
     assert "anthropic:claude-haiku-5-5" in text and "30,000" in text
 
 
@@ -145,3 +145,9 @@ def test_failed_deep_dives_give_up_after_max_attempts(tmp_path):
 def test_render_digest_block_first():
     text = nt.render_digest(nt.DigestReport(blocked="feeds: HTTP 429"), date(2026, 10, 31))
     assert text.splitlines()[2].startswith("**Run stopped: YouTube is blocking this IP** (step: feeds: HTTP 429)")
+
+
+def test_render_digest_lists_videos_skipped_this_week():
+    text = nt.render_digest(nt.DigestReport(new=["x"], over_cap=["T · Chan (https://www.youtube.com/watch?v=v1)"]), DAY)
+    assert "## Skipped this week\n\n- T · Chan (https://www.youtube.com/watch?v=v1)" in text
+    assert "Carried over" not in text

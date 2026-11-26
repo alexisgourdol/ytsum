@@ -16,6 +16,7 @@ def test_load_config_defaults(tmp_path):
     assert cfg.summary_model == "claude-haiku-5-5"
     assert cfg.per_channel_cap == 2
     assert cfg.deep_dive_cap == 3
+    assert cfg.max_age_days == 7
 
 
 def test_load_config_overrides(tmp_path):
@@ -40,6 +41,13 @@ def test_load_config_ignores_retired_refresh_days(tmp_path):
     path.write_text("refresh_days = 30\ndaily_cap = 5\n")
     cfg = load_config(path)
     assert cfg.daily_cap == 5 and not hasattr(cfg, "refresh_days")
+
+
+def test_load_config_ignores_retired_first_run_days(tmp_path):
+    """first_run_days gave way to max_age_days in SCP-200."""
+    path = tmp_path / "config.toml"
+    path.write_text("first_run_days = 2\n")
+    assert not hasattr(load_config(path), "first_run_days")
 
 
 def test_load_config_reads_data_dir_by_default(isolated_run_log):
